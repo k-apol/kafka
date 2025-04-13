@@ -481,7 +481,16 @@ public class StreamsConfigTest {
         assertEquals("10000", producerConfigs.get(ProducerConfig.LINGER_MS_CONFIG));
         assertEquals("30000", producerConfigs.get(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG));
     }
+    @Test
+    public void shouldParseInternalTopicSetupConfig() {
+        props.put(StreamsConfig.APPLICATION_ID_CONFIG, "test app");
+        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "dummy:9092");
+        props.put(StreamsConfig.INTERNAL_TOPIC_SETUP_CONFIG, StreamsConfig.INTERNAL_TOPIC_SETUP_MANUAL);
 
+        final StreamsConfig config = new StreamsConfig(props);
+
+        assertEquals(StreamsConfig.INTERNAL_TOPIC_SETUP_MANUAL, config.getString(StreamsConfig.INTERNAL_TOPIC_SETUP_CONFIG));
+    }
     @Test
     public void shouldNotThrowIfTransactionTimeoutSmallerThanCommitIntervalForAtLeastOnce() {
         props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, AT_LEAST_ONCE);

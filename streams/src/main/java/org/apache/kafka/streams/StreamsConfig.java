@@ -885,6 +885,14 @@ public class StreamsConfig extends AbstractConfig {
             ProducerConfig.TRANSACTIONAL_ID_CONFIG
         };
 
+    public static final String INTERNAL_TOPIC_SETUP_CONFIG = "internal.topics.setup";
+    public static final String INTERNAL_TOPIC_SETUP_AUTOMATIC = "automatic";
+    public static final String INTERNAL_TOPIC_SETUP_MANUAL = "manual";
+    public static final String INTERNAL_TOPIC_SETUP_DOC = 
+        "Configures how internal topics (e.g., repartition or changelog topics) should be created. " +
+        "Set to 'automatic' to allow internal topics to be created during a rebalance (default). " +
+        "Set to 'manual' to disable automatic creation. Users must call KafkaStreams#init() instead.";
+    
     static {
         CONFIG = new ConfigDef()
 
@@ -1012,6 +1020,12 @@ public class StreamsConfig extends AbstractConfig {
                     LogAndFailProcessingExceptionHandler.class.getName(),
                     Importance.MEDIUM,
                     PROCESSING_EXCEPTION_HANDLER_CLASS_DOC)
+            .define(INTERNAL_TOPIC_SETUP_CONFIG,
+                    ConfigDef.Type.STRING,
+                    INTERNAL_TOPIC_SETUP_AUTOMATIC,
+                    ConfigDef.ValidString.in(INTERNAL_TOPIC_SETUP_AUTOMATIC, INTERNAL_TOPIC_SETUP_MANUAL),
+                    Importance.MEDIUM,
+                    INTERNAL_TOPIC_SETUP_DOC)
             .define(PROCESSING_GUARANTEE_CONFIG,
                     Type.STRING,
                     AT_LEAST_ONCE,
