@@ -483,12 +483,8 @@ public class StreamsConfigTest {
     }
     @Test
     public void shouldParseInternalTopicSetupConfig() {
-        props.put(StreamsConfig.APPLICATION_ID_CONFIG, "test app");
-        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "dummy:9092");
         props.put(StreamsConfig.INTERNAL_TOPIC_SETUP_CONFIG, StreamsConfig.INTERNAL_TOPIC_SETUP_MANUAL);
-
         final StreamsConfig config = new StreamsConfig(props);
-
         assertEquals(StreamsConfig.INTERNAL_TOPIC_SETUP_MANUAL, config.getString(StreamsConfig.INTERNAL_TOPIC_SETUP_CONFIG));
     }
     @Test
