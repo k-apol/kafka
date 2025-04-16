@@ -45,6 +45,7 @@ import org.apache.kafka.common.utils.Timer;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.errors.InvalidStateStoreException;
 import org.apache.kafka.streams.errors.InvalidStateStorePartitionException;
+import org.apache.kafka.streams.errors.MissingSourceTopicException;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.StreamsNotStartedException;
@@ -293,6 +294,27 @@ public class KafkaStreams implements AutoCloseable {
 
     private final Object stateLock = new Object();
     protected volatile State state = State.CREATED;
+
+    public void init() {
+        init(Duration.ofSeconds(60));
+    }
+    /**
+     * Initializes broker-side state such as internal topics (repartition and changelog topics).
+     *
+     * If {@code internal.topics.setup} is set to {@code manual}, this method must be called before {@link #start()}.
+     *
+     * @throws MissingSourceTopicException         if a source topic is missing
+     * @throws MissingInternalTopicsException      if one or more internal topics are missing
+     * @throws MisconfiguredInternalTopicException if an internal topic is misconfigured
+     * @throws InternalTopicsAlreadySetupException if all internal topics are already set up
+     * @throws TimeoutException                    if initialization exceeds the given timeout
+     */
+
+    public void init(final Duration timeout) {
+        // TODO: Validate internal topic setup
+        // TODO: throw relevant exceptions
+        throw new UnsupportedOperationException("Manual topic initialization not yet implemented");
+    }
 
     private boolean waitOnStates(final long waitMs, final State... targetStates) {
         final Set<State> targetStateSet = Set.of(targetStates);
