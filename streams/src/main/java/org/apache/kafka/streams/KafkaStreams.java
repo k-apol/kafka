@@ -295,19 +295,26 @@ public class KafkaStreams implements AutoCloseable {
     private final Object stateLock = new Object();
     protected volatile State state = State.CREATED;
 
+    /**
+     * Initializes broker-side state.
+     *
+     * @throw MissingSourceTopicException         if a source topic is missing
+     * @throw MissingInternalTopicsException      if some but not all of the internal topics are missing
+     * @throw MisconfiguredInternalTopicException if an internal topics is misconfigured
+     * @throw InternalTopicsAlreadySetupException if all internal topics are already setup
+     */
     public void init() {
-        init(Duration.ofSeconds(60));
+        // TODO: Validate internal topic setup
+        // TODO: throw relevant exceptions
     }
     /**
-     * Initializes broker-side state such as internal topics (repartition and changelog topics).
+     * Initializes broker-side state.
      *
-     * If {@code internal.topics.setup} is set to {@code manual}, this method must be called before {@link #start()}.
-     *
-     * @throws MissingSourceTopicException         if a source topic is missing
-     * @throws MissingInternalTopicsException      if one or more internal topics are missing
-     * @throws MisconfiguredInternalTopicException if an internal topic is misconfigured
-     * @throws InternalTopicsAlreadySetupException if all internal topics are already set up
-     * @throws TimeoutException                    if initialization exceeds the given timeout
+     * @throw MissingSourceTopicException         if a source topic is missing
+     * @throw MissingInternalTopicsException      if some but not all of the internal topics are missing
+     * @throw MisconfiguredInternalTopicException if an internal topics is misconfigured
+     * @throw InternalTopicsAlreadySetupException if all internal topics are already setup
+     * @throw TimeoutException                    if initialization exceeds the given timeout
      */
 
     public void init(final Duration timeout) {
@@ -315,6 +322,39 @@ public class KafkaStreams implements AutoCloseable {
         // TODO: throw relevant exceptions
         throw new UnsupportedOperationException("Manual topic initialization not yet implemented");
     }
+
+    /**
+     * Initializes broker-side state.
+     *
+     * This methods takes parameters that specify which internal topics to setup if some
+     * but not all of them are absent.
+     *
+     * @throw MissingSourceTopicException         if a source topic is missing
+     * @throw MissingInternalTopicsException      if some but not all of the internal topics are missing
+     *                                            and the given initialization parameters do not specify to setup them
+     * @throw MisconfiguredInternalTopicException if an internal topics is misconfigured
+     * @throw InternalTopicsAlreadySetupException if all internal topics are already setup
+     */
+    public void init(final Initparameters initparameters) {
+
+    }
+    /**
+     * Initializes broker-side state.
+     *
+     * This methods takes parameters that specify which internal topics to setup if some
+     * but not all of them are absent.
+     *
+     * @throw MissingSourceTopicException         if a source topic is missing
+     * @throw MissingInternalTopicsException      if some but not all of the internal topics are missing
+     *                                            and the given initialization parameters do not specify to setup them
+     * @throw MisconfiguredInternalTopicException if an internal topics is misconfigured
+     * @throw InternalTopicsAlreadySetupException if all internal topics are already setup
+     * @throw TimeoutException                    if initialization exceeds the given timeout
+     */
+    public void init(final InitParameters initParameters, final Duration timeout) {
+
+    }
+
 
     private boolean waitOnStates(final long waitMs, final State... targetStates) {
         final Set<State> targetStateSet = Set.of(targetStates);
