@@ -306,6 +306,8 @@ public class KafkaStreams implements AutoCloseable {
     public void init() {
         // TODO: Validate internal topic setup
         // TODO: throw relevant exceptions
+        // Test comment
+
     }
     /**
      * Initializes broker-side state.
@@ -351,9 +353,9 @@ public class KafkaStreams implements AutoCloseable {
      * @throw InternalTopicsAlreadySetupException if all internal topics are already setup
      * @throw TimeoutException                    if initialization exceeds the given timeout
      */
-    public void init(final InitParameters initParameters, final Duration timeout) {
+    // public void init(final InitParameters initParameters, final Duration timeout) {
 
-    }
+    // }
 
 
     private boolean waitOnStates(final long waitMs, final State... targetStates) {
