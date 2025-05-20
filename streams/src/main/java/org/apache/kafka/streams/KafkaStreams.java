@@ -46,6 +46,9 @@ import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.errors.InvalidStateStoreException;
 import org.apache.kafka.streams.errors.InvalidStateStorePartitionException;
 import org.apache.kafka.streams.errors.MissingSourceTopicException;
+import org.apache.kafka.streams.errors.MisconfiguredInternalTopicException;
+import org.apache.kafka.streams.errors.MissingInternalTopicsException;
+import org.apache.kafka.streams.errors.InternalTopicsAlreadySetupException;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.StreamsNotStartedException;
@@ -62,6 +65,9 @@ import org.apache.kafka.streams.processor.StreamPartitioner;
 import org.apache.kafka.streams.processor.TaskId;
 import org.apache.kafka.streams.processor.internals.ClientUtils;
 import org.apache.kafka.streams.processor.internals.GlobalStreamThread;
+import org.apache.kafka.streams.processor.internals.InternalTopicManager;
+import org.apache.kafka.streams.processor.internals.InternalTopicConfig;
+import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder;
 import org.apache.kafka.streams.processor.internals.StateDirectory;
 import org.apache.kafka.streams.processor.internals.StreamThread;
 import org.apache.kafka.streams.processor.internals.StreamsMetadataState;
@@ -71,6 +77,7 @@ import org.apache.kafka.streams.processor.internals.TopologyMetadata;
 import org.apache.kafka.streams.processor.internals.assignment.AssignorError;
 import org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl;
 import org.apache.kafka.streams.processor.internals.namedtopology.NamedTopology;
+import org.apache.kafka.streams.processor.internals.InternalTopicManager.ValidationResult;
 import org.apache.kafka.streams.query.FailureReason;
 import org.apache.kafka.streams.query.PositionBound;
 import org.apache.kafka.streams.query.QueryConfig;
@@ -113,6 +120,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static org.apache.kafka.streams.StreamsConfig.METRICS_RECORDING_LEVEL_CONFIG;
+import static org.apache.kafka.streams.StreamsConfig.DEFAULT_INIT_TIMEOUT_MS;
 import static org.apache.kafka.streams.errors.StreamsUncaughtExceptionHandler.StreamThreadExceptionResponse.SHUTDOWN_CLIENT;
 import static org.apache.kafka.streams.internals.ApiUtils.prepareMillisCheckFailMsgPrefix;
 import static org.apache.kafka.streams.internals.ApiUtils.validateMillisecondDuration;
@@ -298,31 +306,30 @@ public class KafkaStreams implements AutoCloseable {
     /**
      * Initializes broker-side state.
      *
-     * @throw MissingSourceTopicException         if a source topic is missing
-     * @throw MissingInternalTopicsException      if some but not all of the internal topics are missing
-     * @throw MisconfiguredInternalTopicException if an internal topics is misconfigured
-     * @throw InternalTopicsAlreadySetupException if all internal topics are already setup
+     * @throws MissingSourceTopicException         if a source topic is missing
+     * @throws MissingInternalTopicsException      if some but not all of the internal topics are missing
+     * @throws MisconfiguredInternalTopicException if an internal topics is misconfigured
+     * @throws InternalTopicsAlreadySetupException if all internal topics are already setup
      */
-    public void init() {
-        // TODO: Validate internal topic setup
-        // TODO: throw relevant exceptions
-        // Test comment
-
+    public void init(){
+        this.init(DEFAULT_INIT_TIMEOUT_MS);
     }
+
     /**
      * Initializes broker-side state.
      *
-     * @throw MissingSourceTopicException         if a source topic is missing
-     * @throw MissingInternalTopicsException      if some but not all of the internal topics are missing
-     * @throw MisconfiguredInternalTopicException if an internal topics is misconfigured
-     * @throw InternalTopicsAlreadySetupException if all internal topics are already setup
-     * @throw TimeoutException                    if initialization exceeds the given timeout
+     * @throws MissingSourceTopicException         if a source topic is missing
+     * @throws MissingInternalTopicsException      if some but not all of the internal topics are missing
+     * @throws MisconfiguredInternalTopicException if an internal topics is misconfigured
+     * @throws InternalTopicsAlreadySetupException if all internal topics are already setup
+     * @throws TimeoutException                    if initialization exceeds the given timeout
      */
 
     public void init(final Duration timeout) {
-        // TODO: Validate internal topic setup
-        // TODO: throw relevant exceptions
-        throw new UnsupportedOperationException("Manual topic initialization not yet implemented");
+        final InitParameters initParameters = InitParameters.initParameters();
+        initParameters.setTimeout(timeout);
+
+        this.doInit(InitParameters.initParameters());
     }
 
     /**
@@ -331,32 +338,130 @@ public class KafkaStreams implements AutoCloseable {
      * This methods takes parameters that specify which internal topics to setup if some
      * but not all of them are absent.
      *
-     * @throw MissingSourceTopicException         if a source topic is missing
-     * @throw MissingInternalTopicsException      if some but not all of the internal topics are missing
+     * @throws MissingSourceTopicException         if a source topic is missing
+     * @throws MissingInternalTopicsException      if some but not all of the internal topics are missing
      *                                            and the given initialization parameters do not specify to setup them
-     * @throw MisconfiguredInternalTopicException if an internal topics is misconfigured
-     * @throw InternalTopicsAlreadySetupException if all internal topics are already setup
+     * @throws MisconfiguredInternalTopicException if an internal topics is misconfigured
+     * @throws InternalTopicsAlreadySetupException if all internal topics are already setup
      */
-    public void init(final Initparameters initparameters) {
 
+    public void init(final InitParameters initParameters) {
+        this.doInit(initParameters);
     }
+
     /**
      * Initializes broker-side state.
      *
      * This methods takes parameters that specify which internal topics to setup if some
      * but not all of them are absent.
      *
-     * @throw MissingSourceTopicException         if a source topic is missing
-     * @throw MissingInternalTopicsException      if some but not all of the internal topics are missing
+     * @throws MissingSourceTopicException         if a source topic is missing
+     * @throws MissingInternalTopicsException      if some but not all of the internal topics are missing
      *                                            and the given initialization parameters do not specify to setup them
-     * @throw MisconfiguredInternalTopicException if an internal topics is misconfigured
-     * @throw InternalTopicsAlreadySetupException if all internal topics are already setup
-     * @throw TimeoutException                    if initialization exceeds the given timeout
+     * @throws MisconfiguredInternalTopicException if an internal topics is misconfigured
+     * @throws InternalTopicsAlreadySetupException if all internal topics are already setup
+     * @throws TimeoutException                    if initialization exceeds the given timeout
      */
-    // public void init(final InitParameters initParameters, final Duration timeout) {
+     public void init(final InitParameters initParameters, final Duration timeout) {
+         initParameters.enableTimeout();
+         initParameters.setTimeout(timeout);
 
-    // }
+         this.doInit(initParameters);
+     }
+    private void doInit(final InitParameters initParameters) {
 
+        InternalTopicManager internalTopicManager = new InternalTopicManager(time, adminClient, applicationConfigs);
+        if (initParameters.hasTimeoutEnabled()) {
+            internalTopicManager.setInitTimeout(initParameters.getTimeout());
+        }
+
+        final Map<String, InternalTopicConfig> allInternalTopics = new HashMap<>();
+        final Set<String> allSourceTopics = new HashSet<>();
+        for (Map<TopologyMetadata.Subtopology, InternalTopologyBuilder.TopicsInfo> subtopologyMap : topologyMetadata.topologyToSubtopologyTopicsInfoMap().values()) {
+            for (InternalTopologyBuilder.TopicsInfo topicsInfo : subtopologyMap.values()) {
+                allInternalTopics.putAll(topicsInfo.stateChangelogTopics);
+                allInternalTopics.putAll(topicsInfo.repartitionSourceTopics);
+                allSourceTopics.addAll(topicsInfo.sourceTopics);
+            }
+        }
+        try {
+            final ValidationResult validationResult = internalTopicManager.validate(allInternalTopics); // can throw timeout
+
+            final boolean noInternalTopicsExist = allInternalTopics.keySet() == validationResult.missingTopics();
+            final boolean internalTopicsMisconfigured = !validationResult.misconfigurationsForTopics().isEmpty();
+            final boolean allInternalTopicsExist = validationResult.missingTopics().isEmpty();
+            final boolean missingSourceTopics = !Collections.disjoint(
+                    validationResult.missingTopics(),
+                    allSourceTopics
+            );
+            if (internalTopicsMisconfigured) {
+                throw new MisconfiguredInternalTopicException("Misconfigured Internal Topics: " + validationResult.misconfigurationsForTopics());
+            }
+            if (missingSourceTopics) {
+                allSourceTopics.retainAll(validationResult.missingTopics());
+                throw new MissingSourceTopicException("Missing source topics: " + allSourceTopics);
+            }
+            if (noInternalTopicsExist) {
+                internalTopicManager.setup(allInternalTopics);
+            } else if (allInternalTopicsExist) {
+                throw new InternalTopicsAlreadySetupException("All internal topics have already been setup");
+            } else {
+                if (initParameters.setupInternalTopicsIfIncompleteEnabled()) {
+                    final Map<String, InternalTopicConfig> topicsToCreate = new HashMap<>();
+                    for (String missingTopic : validationResult.missingTopics()) {
+                        topicsToCreate.put(missingTopic, allInternalTopics.get(missingTopic));
+                    }
+                    internalTopicManager.makeReady(topicsToCreate); // can throw timeout
+                } else {
+                    throw new MissingInternalTopicsException("Missing Internal Topics: ", new ArrayList<>(validationResult.missingTopics()));
+                }
+            }
+        } catch (TimeoutException timeoutException) {
+            throw new TimeoutException(timeoutException.getMessage(), timeoutException);
+        } catch (StreamsException streamsException) {
+            throw new StreamsException(streamsException.getMessage(), streamsException);
+        }
+    }
+
+    public static class InitParameters {
+        private boolean timeoutEnabled;
+        private final boolean setupInternalTopicsIfIncomplete;
+        private Duration timeout;
+
+        private InitParameters(final boolean setupInternalTopicsIfIncomplete) {
+            this.setupInternalTopicsIfIncomplete = setupInternalTopicsIfIncomplete;
+        }
+
+        // Default: don't create missing topics if only some are missing
+        public static InitParameters initParameters() {
+            return new InitParameters(false);
+        }
+
+        public InitParameters enableSetupInternalTopicsIfIncomplete() {
+            return new InitParameters(true);
+        }
+
+        public InitParameters disableSetupInternalTopicsIfIncomplete() {
+            return new InitParameters(false);
+        }
+
+        public boolean setupInternalTopicsIfIncompleteEnabled() {
+            return setupInternalTopicsIfIncomplete;
+        }
+
+        public final void enableTimeout() {
+            this.timeoutEnabled = true;
+        }
+        public final boolean hasTimeoutEnabled() {
+            return timeoutEnabled;
+        }
+
+        public final void setTimeout(final Duration timeout) {
+            this.timeout = timeout;
+        }
+        public final Duration getTimeout() { return this.timeout; }
+
+    }
 
     private boolean waitOnStates(final long waitMs, final State... targetStates) {
         final Set<State> targetStateSet = Set.of(targetStates);

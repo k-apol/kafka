@@ -16,11 +16,11 @@
  */
 package org.apache.kafka.streams.errors;
 
-public class InternalTopicAlreadySetupException extends StreamsException {
+public class InternalTopicsAlreadySetupException extends StreamsException {
     
     private static final long serialVersionUID = 1L;
 
-    public InternalTopicAlreadySetupException(final String message) {
+    public InternalTopicsAlreadySetupException(final String message) {
         super(message);
     }
 }

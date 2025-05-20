@@ -47,6 +47,7 @@ import org.apache.kafka.streams.processor.internals.ClientUtils.QuietConsumerCon
 
 import org.slf4j.Logger;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -79,6 +80,8 @@ public class InternalTopicManager {
     private final long windowChangeLogAdditionalRetention;
     private final long retryBackOffMs;
     private final long retryTimeoutMs;
+    private Duration initTimeoutMs;
+    private boolean isInitializing = false;
 
     private final Map<String, String> defaultTopicConfigs = new HashMap<>();
 
@@ -99,6 +102,7 @@ public class InternalTopicManager {
         consumerConfig.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
         consumerConfig.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
         retryTimeoutMs = new QuietConsumerConfig(consumerConfig).getInt(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG) / 2L;
+        initTimeoutMs = StreamsConfig.DEFAULT_INIT_TIMEOUT_MS;
 
         log.debug("Configs:" + Utils.NL +
             "\t{} = {}" + Utils.NL +
@@ -113,7 +117,7 @@ public class InternalTopicManager {
         }
     }
 
-    static class ValidationResult {
+    public static class ValidationResult {
         private final Set<String> missingTopics = new HashSet<>();
         private final Map<String, List<String>> misconfigurationsForTopics = new HashMap<>();
 
@@ -463,6 +467,7 @@ public class InternalTopicManager {
 
         long currentWallClockMs = time.milliseconds();
         final long deadlineMs = currentWallClockMs + retryTimeoutMs;
+        final long initDeadlineMs = currentWallClockMs + this.initTimeoutMs.toMillis();
 
         Set<String> topicsNotReady = new HashSet<>(topics.keySet());
         final Set<String> newlyCreatedTopics = new HashSet<>();
@@ -556,11 +561,16 @@ public class InternalTopicManager {
 
             if (!topicsNotReady.isEmpty()) {
                 currentWallClockMs = time.milliseconds();
-
-                if (currentWallClockMs >= deadlineMs) {
-                    final String timeoutError = String.format("Could not create topics within %d milliseconds. " +
-                        "This can happen if the Kafka cluster is temporarily not available.", retryTimeoutMs);
-                    log.error(timeoutError);
+                final boolean isInitializationTimeout = this.isInitializing() && currentWallClockMs >= initDeadlineMs;
+                if (isInitializationTimeout || currentWallClockMs >= deadlineMs) {
+                    final String timeoutError;
+                    if (!isInitializationTimeout) {
+                        timeoutError = String.format("Could not create topics within %d milliseconds. " +
+                                "This can happen if the Kafka cluster is temporarily not available.", retryTimeoutMs);
+                        log.error(timeoutError);
+                    } else {
+                        timeoutError = String.format("Could not finish initialization within %d milliseconds.", initTimeoutMs.toMillis());
+                    }
                     throw new TimeoutException(timeoutError);
                 }
                 log.info(
@@ -626,6 +636,14 @@ public class InternalTopicManager {
         }
 
         return topicPartitionInfo;
+    }
+    /* Allow manual setting of initialization timeout when using Kafka Streams Init() */
+    public void setInitTimeout(final Duration timeoutMs) {
+        this.isInitializing = true;
+        this.initTimeoutMs = timeoutMs;
+    }
+    private boolean isInitializing() {
+        return this.isInitializing;
     }
 
     /**

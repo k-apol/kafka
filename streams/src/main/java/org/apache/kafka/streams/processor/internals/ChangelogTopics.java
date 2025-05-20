@@ -19,14 +19,19 @@ package org.apache.kafka.streams.processor.internals;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.streams.processor.TaskId;
+import org.apache.kafka.common.utils.Utils;
+import org.apache.kafka.streams.errors.MisconfiguredInternalTopicException;
+import org.apache.kafka.streams.processor.internals.InternalTopicManager.ValidationResult;
 import org.apache.kafka.streams.processor.internals.InternalTopologyBuilder.TopicsInfo;
 import org.apache.kafka.streams.processor.internals.TopologyMetadata.Subtopology;
 
 import org.slf4j.Logger;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -62,10 +67,11 @@ public class ChangelogTopics {
         for (final Map.Entry<Subtopology, TopicsInfo> entry : topicGroups.entrySet()) {
             final Subtopology subtopology = entry.getKey();
             final TopicsInfo topicsInfo = entry.getValue();
+//            final int topicGroupId = entry.entrySet();
 
             final Set<TaskId> topicGroupTasks = tasksForTopicGroup.get(subtopology);
             if (topicGroupTasks == null) {
-                log.debug("No tasks found for subtopology {}", subtopology);
+                log.debug("No tasks found for topic group {}", subtopology.nodeGroupId);
                 continue;
             } else if (topicsInfo.stateChangelogTopics.isEmpty()) {
                 continue;
