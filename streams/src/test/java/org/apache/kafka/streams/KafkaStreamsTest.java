@@ -1840,7 +1840,14 @@ public class KafkaStreamsTest {
         assertThat(didAssertThreadTwo.get(), equalTo(true));
         assertThat(didAssertGlobalThread.get(), equalTo(true));
     }
+    public void initShouldThrowMisconfiguredExceptionWhenInternalTopicsAreMisconfigured() {
 
+    }
+//    public void initShouldThrowMissingSourceTopicExceptionWhenSourceTopicIsMissing()
+//    public void initShouldThrowInternalTopicsAlreadySetupExceptionIfAllExist()
+//    public void initShouldSetupAllInternalTopicsIfNoneExist()
+//    public void initShouldThrowMissingInternalTopicsExceptionWhenDisabled()
+//    public void initShouldMakeReadyInternalTopicsWhenAutoSetupEnabled()
     private Topology getStatefulTopology(final String inputTopic,
                                          final String outputTopic,
                                          final String globalTopicName,

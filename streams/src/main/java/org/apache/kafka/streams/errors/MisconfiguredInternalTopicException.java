@@ -21,6 +21,6 @@ public class MisconfiguredInternalTopicException extends StreamsException {
     private static final long serialVersionUID = 1L;
     
     public MisconfiguredInternalTopicException(final String message) {
-    super(message);
-   } 
+        super(message);
+    }
 }

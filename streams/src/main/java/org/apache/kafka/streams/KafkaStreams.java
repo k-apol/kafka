@@ -311,7 +311,7 @@ public class KafkaStreams implements AutoCloseable {
      * @throws MisconfiguredInternalTopicException if an internal topics is misconfigured
      * @throws InternalTopicsAlreadySetupException if all internal topics are already setup
      */
-    public void init(){
+    public void init() {
         this.init(DEFAULT_INIT_TIMEOUT_MS);
     }
 
@@ -362,23 +362,23 @@ public class KafkaStreams implements AutoCloseable {
      * @throws InternalTopicsAlreadySetupException if all internal topics are already setup
      * @throws TimeoutException                    if initialization exceeds the given timeout
      */
-     public void init(final InitParameters initParameters, final Duration timeout) {
-         initParameters.enableTimeout();
-         initParameters.setTimeout(timeout);
+    public void init(final InitParameters initParameters, final Duration timeout) {
+        initParameters.enableTimeout();
+        initParameters.setTimeout(timeout);
 
-         this.doInit(initParameters);
-     }
+        this.doInit(initParameters);
+    }
+
     private void doInit(final InitParameters initParameters) {
-
-        InternalTopicManager internalTopicManager = new InternalTopicManager(time, adminClient, applicationConfigs);
+        final InternalTopicManager internalTopicManager = new InternalTopicManager(time, adminClient, applicationConfigs);
         if (initParameters.hasTimeoutEnabled()) {
             internalTopicManager.setInitTimeout(initParameters.getTimeout());
         }
 
         final Map<String, InternalTopicConfig> allInternalTopics = new HashMap<>();
         final Set<String> allSourceTopics = new HashSet<>();
-        for (Map<TopologyMetadata.Subtopology, InternalTopologyBuilder.TopicsInfo> subtopologyMap : topologyMetadata.topologyToSubtopologyTopicsInfoMap().values()) {
-            for (InternalTopologyBuilder.TopicsInfo topicsInfo : subtopologyMap.values()) {
+        for (final Map<TopologyMetadata.Subtopology, InternalTopologyBuilder.TopicsInfo> subtopologyMap : topologyMetadata.topologyToSubtopologyTopicsInfoMap().values()) {
+            for (final InternalTopologyBuilder.TopicsInfo topicsInfo : subtopologyMap.values()) {
                 allInternalTopics.putAll(topicsInfo.stateChangelogTopics);
                 allInternalTopics.putAll(topicsInfo.repartitionSourceTopics);
                 allSourceTopics.addAll(topicsInfo.sourceTopics);
@@ -390,10 +390,8 @@ public class KafkaStreams implements AutoCloseable {
             final boolean noInternalTopicsExist = allInternalTopics.keySet() == validationResult.missingTopics();
             final boolean internalTopicsMisconfigured = !validationResult.misconfigurationsForTopics().isEmpty();
             final boolean allInternalTopicsExist = validationResult.missingTopics().isEmpty();
-            final boolean missingSourceTopics = !Collections.disjoint(
-                    validationResult.missingTopics(),
-                    allSourceTopics
-            );
+            final boolean missingSourceTopics = !Collections.disjoint(validationResult.missingTopics(), allSourceTopics);
+
             if (internalTopicsMisconfigured) {
                 throw new MisconfiguredInternalTopicException("Misconfigured Internal Topics: " + validationResult.misconfigurationsForTopics());
             }
@@ -408,25 +406,25 @@ public class KafkaStreams implements AutoCloseable {
             } else {
                 if (initParameters.setupInternalTopicsIfIncompleteEnabled()) {
                     final Map<String, InternalTopicConfig> topicsToCreate = new HashMap<>();
-                    for (String missingTopic : validationResult.missingTopics()) {
+                    for (final String missingTopic : validationResult.missingTopics()) {
                         topicsToCreate.put(missingTopic, allInternalTopics.get(missingTopic));
                     }
-                    internalTopicManager.makeReady(topicsToCreate); // can throw timeout
+                    internalTopicManager.makeReady(topicsToCreate);
                 } else {
                     throw new MissingInternalTopicsException("Missing Internal Topics: ", new ArrayList<>(validationResult.missingTopics()));
                 }
             }
-        } catch (TimeoutException timeoutException) {
+        } catch (final TimeoutException timeoutException) {
             throw new TimeoutException(timeoutException.getMessage(), timeoutException);
-        } catch (StreamsException streamsException) {
+        } catch (final StreamsException streamsException) {
             throw new StreamsException(streamsException.getMessage(), streamsException);
         }
     }
 
     public static class InitParameters {
         private boolean timeoutEnabled;
-        private final boolean setupInternalTopicsIfIncomplete;
         private Duration timeout;
+        private final boolean setupInternalTopicsIfIncomplete;
 
         private InitParameters(final boolean setupInternalTopicsIfIncomplete) {
             this.setupInternalTopicsIfIncomplete = setupInternalTopicsIfIncomplete;
@@ -452,6 +450,7 @@ public class KafkaStreams implements AutoCloseable {
         public final void enableTimeout() {
             this.timeoutEnabled = true;
         }
+
         public final boolean hasTimeoutEnabled() {
             return timeoutEnabled;
         }
@@ -459,7 +458,10 @@ public class KafkaStreams implements AutoCloseable {
         public final void setTimeout(final Duration timeout) {
             this.timeout = timeout;
         }
-        public final Duration getTimeout() { return this.timeout; }
+
+        public final Duration getTimeout() {
+            return this.timeout;
+        }
 
     }
 
