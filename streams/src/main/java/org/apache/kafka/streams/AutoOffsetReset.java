@@ -21,7 +21,7 @@ import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
 
 import java.time.Duration;
-import java.util.Optional; 
+import java.util.Optional;
 
 /**
  * Sets the {@code auto.offset.reset} configuration when
