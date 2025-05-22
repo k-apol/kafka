@@ -73,10 +73,10 @@ public class ChangelogTopics {
 
             for (final TaskId task : topicGroupTasks) {
                 final Set<TopicPartition> changelogTopicPartitions = topicsInfo.stateChangelogTopics
-                        .keySet()
-                        .stream()
-                        .map(topic -> new TopicPartition(topic, task.partition()))
-                        .collect(Collectors.toSet());
+                    .keySet()
+                    .stream()
+                    .map(topic -> new TopicPartition(topic, task.partition()))
+                    .collect(Collectors.toSet());
                 changelogPartitionsForStatefulTask.put(task, changelogTopicPartitions);
             }
 
