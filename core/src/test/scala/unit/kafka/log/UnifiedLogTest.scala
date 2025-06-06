@@ -17,7 +17,6 @@
 
 package kafka.log
 
-import kafka.log.remote.RemoteLogManager
 import kafka.server.KafkaConfig
 import kafka.utils.TestUtils
 import org.apache.kafka.common.compress.Compression
@@ -34,9 +33,8 @@ import org.apache.kafka.common.requests.{ListOffsetsRequest, ListOffsetsResponse
 import org.apache.kafka.common.utils.{BufferSupplier, Time, Utils}
 import org.apache.kafka.coordinator.transaction.TransactionLogConfig
 import org.apache.kafka.server.common.RequestLocal
-import org.apache.kafka.server.config.KRaftConfigs
 import org.apache.kafka.server.log.remote.metadata.storage.TopicBasedRemoteLogMetadataManagerConfig
-import org.apache.kafka.server.log.remote.storage.{NoOpRemoteLogMetadataManager, NoOpRemoteStorageManager, RemoteLogManagerConfig}
+import org.apache.kafka.server.log.remote.storage.{NoOpRemoteLogMetadataManager, NoOpRemoteStorageManager, RemoteLogManager, RemoteLogManagerConfig}
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
 import org.apache.kafka.server.purgatory.{DelayedOperationPurgatory, DelayedRemoteListOffsets}
 import org.apache.kafka.server.storage.log.{FetchIsolation, UnexpectedAppendOffsetException}
@@ -58,6 +56,7 @@ import org.mockito.Mockito.{doAnswer, doThrow, spy}
 import net.jqwik.api.AfterFailureMode
 import net.jqwik.api.ForAll
 import net.jqwik.api.Property
+import org.apache.kafka.server.config.KRaftConfigs
 
 import java.io._
 import java.nio.ByteBuffer
@@ -232,7 +231,7 @@ class UnifiedLogTest {
 
     reopened.truncateFullyAndStartAt(2L, Optional.of(1L))
     assertEquals(Optional.empty, reopened.firstUnstableOffset)
-    assertEquals(java.util.Collections.emptyMap(), reopened.producerStateManager.activeProducers)
+    assertEquals(util.Map.of, reopened.producerStateManager.activeProducers)
     assertEquals(1L, reopened.logStartOffset)
     assertEquals(2L, reopened.logEndOffset)
   }
@@ -275,7 +274,7 @@ class UnifiedLogTest {
 
     truncateFunc(reopened, 0L)
     assertEquals(Optional.empty, reopened.firstUnstableOffset)
-    assertEquals(java.util.Collections.emptyMap(), reopened.producerStateManager.activeProducers)
+    assertEquals(util.Map.of, reopened.producerStateManager.activeProducers)
   }
 
   @Test
@@ -1981,7 +1980,7 @@ class UnifiedLogTest {
     val log = createLog(logDir, LogTestUtils.createLogConfig(maxMessageBytes = second.sizeInBytes - 1))
 
     log.appendAsFollower(first, Int.MaxValue)
-    // the second record is larger then limit but appendAsFollower does not validate the size.
+    // the second record is larger than limit but appendAsFollower does not validate the size.
     log.appendAsFollower(second, Int.MaxValue)
   }
 
@@ -1992,7 +1991,7 @@ class UnifiedLogTest {
     val log = createLog(logDir, logConfig)
     val previousEndOffset = log.logEndOffsetMetadata.messageOffset
 
-    if (expectedException.isPresent()) {
+    if (expectedException.isPresent) {
       assertThrows(
         expectedException.get(),
         () => log.appendAsFollower(records, Int.MaxValue)
@@ -2237,7 +2236,8 @@ class UnifiedLogTest {
       _ => Optional.empty[UnifiedLog](),
       (_, _) => {},
       brokerTopicStats,
-      new Metrics()))
+      new Metrics(),
+      Optional.empty))
     remoteLogManager.setDelayedOperationPurgatory(purgatory)
 
     val logConfig = LogTestUtils.createLogConfig(segmentBytes = 200, indexIntervalBytes = 1,
@@ -2334,7 +2334,8 @@ class UnifiedLogTest {
       _ => Optional.empty[UnifiedLog](),
       (_, _) => {},
       brokerTopicStats,
-      new Metrics()))
+      new Metrics(),
+      Optional.empty))
     remoteLogManager.setDelayedOperationPurgatory(purgatory)
 
     val logConfig = LogTestUtils.createLogConfig(segmentBytes = 200, indexIntervalBytes = 1,
@@ -2733,7 +2734,7 @@ class UnifiedLogTest {
   @Test
   def testLeaderEpochCacheCreatedAfterMessageFormatUpgrade(): Unit = {
     val logProps = new Properties()
-    logProps.put(TopicConfig.SEGMENT_BYTES_CONFIG, "1000")
+    logProps.put(LogConfig.INTERNAL_SEGMENT_BYTES_CONFIG, "1000")
     logProps.put(TopicConfig.INDEX_INTERVAL_BYTES_CONFIG, "1")
     logProps.put(TopicConfig.MAX_MESSAGE_BYTES_CONFIG, "65536")
     val logConfig = new LogConfig(logProps)
@@ -2990,7 +2991,7 @@ class UnifiedLogTest {
     for (_ <- 0 until 15)
       log.appendAsLeader(createRecords, 0)
 
-    // mark oldest segment as older the retention.ms
+    // mark the oldest segment as older the retention.ms
     log.logSegments.asScala.head.setLastModified(mockTime.milliseconds - 20000)
 
     val segments = log.numberOfSegments
@@ -3109,7 +3110,7 @@ class UnifiedLogTest {
     log.deleteOldSegments()
 
     //The oldest epoch entry should have been removed
-    assertEquals(java.util.Arrays.asList(new EpochEntry(1, 5), new EpochEntry(2, 10)), cache.epochEntries)
+    assertEquals(util.List.of(new EpochEntry(1, 5), new EpochEntry(2, 10)), cache.epochEntries)
   }
 
   @Test
@@ -3134,7 +3135,7 @@ class UnifiedLogTest {
     log.deleteOldSegments()
 
     //The first entry should have gone from (0,0) => (0,5)
-    assertEquals(java.util.Arrays.asList(new EpochEntry(0, 5), new EpochEntry(1, 7), new EpochEntry(2, 10)), cache.epochEntries)
+    assertEquals(util.List.of(new EpochEntry(0, 5), new EpochEntry(1, 7), new EpochEntry(2, 10)), cache.epochEntries)
   }
 
   @Test
@@ -4598,7 +4599,7 @@ class UnifiedLogTest {
   def testGetFirstBatchTimestampForSegments(): Unit = {
     val log = createLog(logDir, LogTestUtils.createLogConfig())
 
-    val segments: java.util.List[LogSegment] = new java.util.ArrayList[LogSegment]()
+    val segments: util.List[LogSegment] = new util.ArrayList[LogSegment]()
     val seg1 = LogTestUtils.createSegment(1, logDir, 10, Time.SYSTEM)
     val seg2 = LogTestUtils.createSegment(2, logDir, 10, Time.SYSTEM)
     segments.add(seg1)

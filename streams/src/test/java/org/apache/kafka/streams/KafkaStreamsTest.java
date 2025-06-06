@@ -1801,25 +1801,25 @@ public class KafkaStreamsTest {
         final AtomicBoolean didAssertGlobalThread = new AtomicBoolean(false);
 
         when(streamThreadOne.clientInstanceIds(any()))
-                .thenReturn(Collections.singletonMap("any-client-1", new KafkaFutureImpl<>() {
-                    @Override
-                    public Uuid get(final long timeout, final TimeUnit timeUnit) {
-                        didAssertThreadOne.set(true);
-                        assertThat(timeout, equalTo(expectedTimeout.getAndAdd(-10L)));
-                        mockTime.sleep(10L);
-                        return null;
-                    }
-                }));
+            .thenReturn(Collections.singletonMap("any-client-1", new KafkaFutureImpl<>() {
+                @Override
+                public Uuid get(final long timeout, final TimeUnit timeUnit) {
+                    didAssertThreadOne.set(true);
+                    assertThat(timeout, equalTo(expectedTimeout.getAndAdd(-10L)));
+                    mockTime.sleep(10L);
+                    return null;
+                }
+            }));
         when(streamThreadTwo.clientInstanceIds(any()))
-                .thenReturn(Collections.singletonMap("any-client-2", new KafkaFutureImpl<>() {
-                    @Override
-                    public Uuid get(final long timeout, final TimeUnit timeUnit) {
-                        didAssertThreadTwo.set(true);
-                        assertThat(timeout, equalTo(expectedTimeout.getAndAdd(-5L)));
-                        mockTime.sleep(5L);
-                        return null;
-                    }
-                }));
+            .thenReturn(Collections.singletonMap("any-client-2", new KafkaFutureImpl<>() {
+                @Override
+                public Uuid get(final long timeout, final TimeUnit timeUnit) {
+                    didAssertThreadTwo.set(true);
+                    assertThat(timeout, equalTo(expectedTimeout.getAndAdd(-5L)));
+                    mockTime.sleep(5L);
+                    return null;
+                }
+            }));
 
         final StreamsBuilder builder = getBuilderWithSource();
         builder.globalTable("anyTopic");
@@ -1828,15 +1828,15 @@ public class KafkaStreamsTest {
             streams.start();
 
             when(globalStreamThreadMockedConstruction.constructed().get(0).globalConsumerInstanceId(any()))
-                    .thenReturn(new KafkaFutureImpl<>() {
-                        @Override
-                        public Uuid get(final long timeout, final TimeUnit timeUnit) {
-                            didAssertGlobalThread.set(true);
-                            assertThat(timeout, equalTo(expectedTimeout.getAndAdd(-8L)));
-                            mockTime.sleep(8L);
-                            return null;
-                        }
-                    });
+                .thenReturn(new KafkaFutureImpl<>() {
+                    @Override
+                    public Uuid get(final long timeout, final TimeUnit timeUnit) {
+                        didAssertGlobalThread.set(true);
+                        assertThat(timeout, equalTo(expectedTimeout.getAndAdd(-8L)));
+                        mockTime.sleep(8L);
+                        return null;
+                    }
+                });
 
             streams.clientInstanceIds(Duration.ofMillis(60L));
         }

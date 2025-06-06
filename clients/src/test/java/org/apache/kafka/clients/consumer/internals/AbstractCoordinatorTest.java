@@ -166,6 +166,7 @@ public class AbstractCoordinatorTest {
                                                                         HEARTBEAT_INTERVAL_MS,
                                                                         GROUP_ID,
                                                                         groupInstanceId,
+                                                                        null,
                                                                         retryBackoffMs,
                                                                         retryBackoffMaxMs,
                                                                         leaveOnClose);
@@ -1505,7 +1506,7 @@ public class AbstractCoordinatorTest {
     }
 
     @Test
-    public void testWakeupAfterSyncGroupReceived() throws Exception {
+    public void testWakeupAfterSyncGroupReceived() {
         setupCoordinator(RETRY_BACKOFF_MS, RETRY_BACKOFF_MAX_MS, REBALANCE_TIMEOUT_MS,
             Optional.empty(), Optional.of(() -> mock(BaseHeartbeatThread.class)));
 
@@ -1537,7 +1538,7 @@ public class AbstractCoordinatorTest {
     }
 
     @Test
-    public void testWakeupAfterSyncGroupReceivedExternalCompletion() throws Exception {
+    public void testWakeupAfterSyncGroupReceivedExternalCompletion() {
         setupCoordinator(RETRY_BACKOFF_MS, RETRY_BACKOFF_MAX_MS, REBALANCE_TIMEOUT_MS,
             Optional.empty(), Optional.of(() -> mock(BaseHeartbeatThread.class)));
 

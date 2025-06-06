@@ -186,7 +186,7 @@ public class AsyncKafkaConsumer<K, V> implements ConsumerDelegate<K, V> {
      */
     private class BackgroundEventProcessor implements EventProcessor<BackgroundEvent> {
 
-        private Optional<StreamsRebalanceListener> streamsGroupRebalanceCallbacks = Optional.empty();
+        private Optional<StreamsRebalanceListener> streamsRebalanceListener = Optional.empty();
         private final Optional<StreamsRebalanceData> streamsRebalanceData;
 
         public BackgroundEventProcessor() {
@@ -202,7 +202,7 @@ public class AsyncKafkaConsumer<K, V> implements ConsumerDelegate<K, V> {
                 throw new IllegalStateException("Background event processor was not created to be used with Streams " +
                     "rebalance protocol events");
             }
-            this.streamsGroupRebalanceCallbacks = Optional.of(streamsRebalanceListener);
+            this.streamsRebalanceListener = Optional.of(streamsRebalanceListener);
         }
 
         @Override
@@ -277,20 +277,15 @@ public class AsyncKafkaConsumer<K, V> implements ConsumerDelegate<K, V> {
 
         private StreamsOnTasksRevokedCallbackCompletedEvent invokeOnTasksRevokedCallback(final Set<StreamsRebalanceData.TaskId> activeTasksToRevoke,
                                                                                          final CompletableFuture<Void> future) {
-            final Optional<KafkaException> error;
-            final Optional<Exception> exceptionFromCallback = streamsGroupRebalanceCallbacks().onTasksRevoked(activeTasksToRevoke);
-            if (exceptionFromCallback.isPresent()) {
-                error = Optional.of(ConsumerUtils.maybeWrapAsKafkaException(exceptionFromCallback.get(), "Task revocation callback throws an error"));
-            } else {
-                error = Optional.empty();
-            }
+            final Optional<Exception> exceptionFromCallback = streamsRebalanceListener().onTasksRevoked(activeTasksToRevoke);
+            final Optional<KafkaException> error = exceptionFromCallback.map(e -> ConsumerUtils.maybeWrapAsKafkaException(e, "Task revocation callback throws an error"));
             return new StreamsOnTasksRevokedCallbackCompletedEvent(future, error);
         }
 
         private StreamsOnTasksAssignedCallbackCompletedEvent invokeOnTasksAssignedCallback(final StreamsRebalanceData.Assignment assignment,
                                                                                            final CompletableFuture<Void> future) {
             final Optional<KafkaException> error;
-            final Optional<Exception> exceptionFromCallback = streamsGroupRebalanceCallbacks().onTasksAssigned(assignment);
+            final Optional<Exception> exceptionFromCallback = streamsRebalanceListener().onTasksAssigned(assignment);
             if (exceptionFromCallback.isPresent()) {
                 error = Optional.of(ConsumerUtils.maybeWrapAsKafkaException(exceptionFromCallback.get(), "Task assignment callback throws an error"));
             } else {
@@ -302,7 +297,7 @@ public class AsyncKafkaConsumer<K, V> implements ConsumerDelegate<K, V> {
 
         private StreamsOnAllTasksLostCallbackCompletedEvent invokeOnAllTasksLostCallback(final CompletableFuture<Void> future) {
             final Optional<KafkaException> error;
-            final Optional<Exception> exceptionFromCallback = streamsGroupRebalanceCallbacks().onAllTasksLost();
+            final Optional<Exception> exceptionFromCallback = streamsRebalanceListener().onAllTasksLost();
             if (exceptionFromCallback.isPresent()) {
                 error = Optional.of(ConsumerUtils.maybeWrapAsKafkaException(exceptionFromCallback.get(), "All tasks lost callback throws an error"));
             } else {
@@ -318,8 +313,8 @@ public class AsyncKafkaConsumer<K, V> implements ConsumerDelegate<K, V> {
                     "rebalance protocol events"));
         }
 
-        private StreamsRebalanceListener streamsGroupRebalanceCallbacks() {
-            return streamsGroupRebalanceCallbacks.orElseThrow(
+        private StreamsRebalanceListener streamsRebalanceListener() {
+            return streamsRebalanceListener.orElseThrow(
                 () -> new IllegalStateException("Background event processor was not created to be used with Streams " +
                     "rebalance protocol events"));
         }
@@ -390,7 +385,7 @@ public class AsyncKafkaConsumer<K, V> implements ConsumerDelegate<K, V> {
             setGroupAssignmentSnapshot(partitions);
         }
     };
-    
+
     public AsyncKafkaConsumer(final ConsumerConfig config,
                               final Deserializer<K> keyDeserializer,
                               final Deserializer<V> valueDeserializer,
@@ -932,7 +927,7 @@ public class AsyncKafkaConsumer<K, V> implements ConsumerDelegate<K, V> {
 
     @Override
     public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
-        commitAsync(Optional.of(offsets), callback);
+        commitAsync(Optional.of(new HashMap<>(offsets)), callback);
     }
 
     private void commitAsync(Optional<Map<TopicPartition, OffsetAndMetadata>> offsets, OffsetCommitCallback callback) {
@@ -1311,7 +1306,10 @@ public class AsyncKafkaConsumer<K, V> implements ConsumerDelegate<K, V> {
             // and throw timeout exception if it cannot complete in time.
             if (timeout.isZero()) {
                 applicationEventHandler.add(listOffsetsEvent);
-                return listOffsetsEvent.emptyResults();
+                // It is used to align with classic consumer.
+                // When the "timeout == 0", the classic consumer will return an empty map.
+                // Therefore, the AsyncKafkaConsumer needs to be consistent with it.
+                return new HashMap<>();
             }
 
             Map<TopicPartition, OffsetAndTimestampInternal> offsetAndTimestampMap;
@@ -1370,8 +1368,8 @@ public class AsyncKafkaConsumer<K, V> implements ConsumerDelegate<K, V> {
         close(CloseOptions.timeout(Duration.ofMillis(DEFAULT_CLOSE_TIMEOUT_MS)));
     }
 
+    @Deprecated
     @Override
-    @SuppressWarnings("deprecation")
     public void close(Duration timeout) {
         close(CloseOptions.timeout(timeout));
     }
@@ -1601,12 +1599,12 @@ public class AsyncKafkaConsumer<K, V> implements ConsumerDelegate<K, V> {
 
     @Override
     public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets) {
-        commitSync(Optional.of(offsets), defaultApiTimeoutMs);
+        commitSync(Optional.of(new HashMap<>(offsets)), defaultApiTimeoutMs);
     }
 
     @Override
     public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets, Duration timeout) {
-        commitSync(Optional.of(offsets), timeout);
+        commitSync(Optional.of(new HashMap<>(offsets)), timeout);
     }
 
     private void commitSync(Optional<Map<TopicPartition, OffsetAndMetadata>> offsets, Duration timeout) {

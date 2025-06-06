@@ -39,7 +39,9 @@ import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.errors.UnsupportedVersionException;
 import org.apache.kafka.common.internals.KafkaFutureImpl;
+import org.apache.kafka.common.message.StreamsGroupHeartbeatResponseData;
 import org.apache.kafka.common.metrics.Sensor;
+import org.apache.kafka.common.requests.StreamsGroupHeartbeatResponse;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
@@ -53,6 +55,7 @@ import org.apache.kafka.streams.ThreadMetadata;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.TaskCorruptedException;
 import org.apache.kafka.streams.errors.TaskMigratedException;
+import org.apache.kafka.streams.internals.ConsumerWrapper;
 import org.apache.kafka.streams.internals.metrics.ClientMetrics;
 import org.apache.kafka.streams.internals.metrics.StreamsThreadMetricsDelegatingReporter;
 import org.apache.kafka.streams.processor.StandbyUpdateListener;
@@ -357,6 +360,7 @@ public class StreamThread extends Thread implements ProcessingThread {
     // These are used to signal from outside the stream thread, but the variables themselves are internal to the thread
     private final AtomicLong cacheResizeSize = new AtomicLong(-1L);
     private final AtomicBoolean leaveGroupRequested = new AtomicBoolean(false);
+    private final AtomicLong lastShutdownWarningTimestamp = new AtomicLong(0L);
     private final boolean eosEnabled;
     private final boolean stateUpdaterEnabled;
     private final boolean processingThreadsEnabled;
@@ -450,7 +454,7 @@ public class StreamThread extends Thread implements ProcessingThread {
         final DefaultTaskManager schedulingTaskManager =
             maybeCreateSchedulingTaskManager(processingThreadsEnabled, stateUpdaterEnabled, topologyMetadata, time, threadId, tasks);
         final StateUpdater stateUpdater =
-            maybeCreateAndStartStateUpdater(
+            maybeCreateStateUpdater(
                 stateUpdaterEnabled,
                 streamsMetrics,
                 config,
@@ -533,7 +537,7 @@ public class StreamThread extends Thread implements ProcessingThread {
                                                        final Map<String, Object> consumerConfigs) {
         if (config.getString(StreamsConfig.GROUP_PROTOCOL_CONFIG).equalsIgnoreCase(GroupProtocol.STREAMS.name)) {
             if (topologyMetadata.hasNamedTopologies()) {
-                throw new IllegalStateException("Named topologies and the CONSUMER protocol cannot be used at the same time.");
+                throw new IllegalStateException("Named topologies and the STREAMS protocol cannot be used at the same time.");
             }
             log.info("Streams rebalance protocol enabled");
 
@@ -547,11 +551,16 @@ public class StreamThread extends Thread implements ProcessingThread {
             );
             final ByteArrayDeserializer keyDeserializer = new ByteArrayDeserializer();
             final ByteArrayDeserializer valueDeserializer = new ByteArrayDeserializer();
+
             return new MainConsumerSetup(
-                new AsyncKafkaConsumer<>(
-                    new ConsumerConfig(ConsumerConfig.appendDeserializerToConfig(consumerConfigs, keyDeserializer, valueDeserializer)),
-                    keyDeserializer,
-                    valueDeserializer,
+                maybeWrapConsumer(
+                    consumerConfigs,
+                    new AsyncKafkaConsumer<>(
+                        new ConsumerConfig(ConsumerConfig.appendDeserializerToConfig(consumerConfigs, keyDeserializer, valueDeserializer)),
+                        keyDeserializer,
+                        valueDeserializer,
+                        streamsRebalanceData
+                    ),
                     streamsRebalanceData
                 ),
                 streamsRebalanceData
@@ -562,6 +571,32 @@ public class StreamThread extends Thread implements ProcessingThread {
                 Optional.empty()
             );
         }
+    }
+
+    private static Consumer<byte[], byte[]> maybeWrapConsumer(final Map<String, Object> config,
+                                                              final AsyncKafkaConsumer<byte[], byte[]> consumer,
+                                                              final Optional<StreamsRebalanceData> streamsRebalanceData) {
+        final Object o = config.get(InternalConfig.INTERNAL_CONSUMER_WRAPPER);
+        if (o == null) {
+            return consumer;
+        }
+
+        final ConsumerWrapper wrapper;
+        if (o instanceof String) {
+            try {
+                wrapper = Utils.newInstance((String) o, ConsumerWrapper.class);
+            } catch (final ClassNotFoundException e) {
+                throw new IllegalArgumentException(e);
+            }
+        } else if (o instanceof Class<?>) {
+            wrapper = (ConsumerWrapper) Utils.newInstance((Class<?>) o);
+        } else {
+            throw new IllegalArgumentException("Internal config " + InternalConfig.INTERNAL_CONSUMER_WRAPPER + " must be a class or class name");
+        }
+
+        wrapper.wrapConsumer(consumer, config, streamsRebalanceData);
+
+        return wrapper;
     }
 
     private static class MainConsumerSetup {
@@ -600,7 +635,7 @@ public class StreamThread extends Thread implements ProcessingThread {
         return null;
     }
 
-    private static StateUpdater maybeCreateAndStartStateUpdater(final boolean stateUpdaterEnabled,
+    private static StateUpdater maybeCreateStateUpdater(final boolean stateUpdaterEnabled,
                                                                 final StreamsMetricsImpl streamsMetrics,
                                                                 final StreamsConfig streamsConfig,
                                                                 final Consumer<byte[], byte[]> restoreConsumer,
@@ -611,7 +646,7 @@ public class StreamThread extends Thread implements ProcessingThread {
                                                                 final int threadIdx) {
         if (stateUpdaterEnabled) {
             final String name = clientId + STATE_UPDATER_ID_SUBSTRING + threadIdx;
-            final StateUpdater stateUpdater = new DefaultStateUpdater(
+            return new DefaultStateUpdater(
                 name,
                 streamsMetrics.metricsRegistry(),
                 streamsConfig,
@@ -620,8 +655,6 @@ public class StreamThread extends Thread implements ProcessingThread {
                 topologyMetadata,
                 time
             );
-            stateUpdater.start();
-            return stateUpdater;
         } else {
             return null;
         }
@@ -784,7 +817,7 @@ public class StreamThread extends Thread implements ProcessingThread {
         ThreadMetrics.addThreadStateMetric(
             threadId,
             streamsMetrics,
-            (metricConfig, now) -> this.state());
+            (metricConfig, now) -> this.state().name());
         ThreadMetrics.addThreadBlockedTimeMetric(
             threadId,
             new StreamThreadTotalBlockedTime(
@@ -850,6 +883,9 @@ public class StreamThread extends Thread implements ProcessingThread {
         }
         boolean cleanRun = false;
         try {
+            if (stateUpdaterEnabled) {
+                taskManager.init();
+            }
             cleanRun = runLoop();
         } catch (final Throwable e) {
             failedStreamThreadSensor.record();
@@ -1029,8 +1065,14 @@ public class StreamThread extends Thread implements ProcessingThread {
 
     public void maybeSendShutdown() {
         if (assignmentErrorCode.get() == AssignorError.SHUTDOWN_REQUESTED.code()) {
-            log.warn("Detected that shutdown was requested. " +
-                    "All clients in this app will now begin to shutdown");
+            final long now = time.milliseconds();
+            final long lastLogged = lastShutdownWarningTimestamp.get();
+            if (now - lastLogged >= 10_000L) {
+                if (lastShutdownWarningTimestamp.compareAndSet(lastLogged, now)) {
+                    log.warn("Detected that shutdown was requested. " +
+                            "All clients in this app will now begin to shutdown");
+                }
+            }
             mainConsumer.enforceRebalance("Shutdown requested");
         }
     }
@@ -1072,8 +1114,9 @@ public class StreamThread extends Thread implements ProcessingThread {
         shutdownErrorHook.run();
     }
 
-    public void sendShutdownRequest(final AssignorError assignorError) {
-        assignmentErrorCode.set(assignorError.code());
+    public void sendShutdownRequest() {
+        assignmentErrorCode.set(AssignorError.SHUTDOWN_REQUESTED.code());
+        streamsRebalanceData.ifPresent(StreamsRebalanceData::requestShutdown);
     }
 
     private void handleTaskMigrated(final TaskMigratedException e) {
@@ -1095,7 +1138,10 @@ public class StreamThread extends Thread implements ProcessingThread {
             mainConsumer.subscribe(topologyMetadata.sourceTopicPattern(), rebalanceListener);
         } else {
             if (streamsRebalanceData.isPresent()) {
-                ((AsyncKafkaConsumer<byte[], byte[]>) mainConsumer).subscribe(
+                final AsyncKafkaConsumer<byte[], byte[]> consumer = mainConsumer instanceof ConsumerWrapper
+                    ? ((ConsumerWrapper) mainConsumer).consumer()
+                    : (AsyncKafkaConsumer<byte[], byte[]>) mainConsumer;
+                consumer.subscribe(
                     topologyMetadata.allFullSourceTopicNames(),
                     new DefaultStreamsRebalanceListener(
                         log,
@@ -1479,10 +1525,26 @@ public class StreamThread extends Thread implements ProcessingThread {
 
     public void handleStreamsRebalanceData() {
         if (streamsRebalanceData.isPresent()) {
-
-            if (streamsRebalanceData.get().shutdownRequested()) {
-                assignmentErrorCode.set(AssignorError.SHUTDOWN_REQUESTED.code());
+            for (final StreamsGroupHeartbeatResponseData.Status status : streamsRebalanceData.get().statuses()) {
+                if (status.statusCode() == StreamsGroupHeartbeatResponse.Status.SHUTDOWN_APPLICATION.code()) {
+                    shutdownErrorHook.run();
+                }
             }
+
+            final Map<StreamsRebalanceData.HostInfo, StreamsRebalanceData.EndpointPartitions> partitionsByEndpoint =
+                    streamsRebalanceData.get().partitionsByHost();
+            final Map<HostInfo, Set<TopicPartition>> activeHostInfoMap = new HashMap<>();
+            final Map<HostInfo, Set<TopicPartition>> standbyHostInfoMap = new HashMap<>();
+
+            partitionsByEndpoint.forEach((hostInfo, endpointPartitions) -> {
+                activeHostInfoMap.put(new HostInfo(hostInfo.host(), hostInfo.port()), new HashSet<>(endpointPartitions.activePartitions()));
+                standbyHostInfoMap.put(new HostInfo(hostInfo.host(), hostInfo.port()), new HashSet<>(endpointPartitions.standbyPartitions()));
+            });
+            streamsMetadataState.onChange(
+                    activeHostInfoMap,
+                    standbyHostInfoMap,
+                    getTopicPartitionInfo(activeHostInfoMap)
+            );
         }
     }
 
@@ -2014,5 +2076,9 @@ public class StreamThread extends Thread implements ProcessingThread {
 
     Admin adminClient() {
         return adminClient;
+    }
+
+    Optional<StreamsRebalanceData> streamsRebalanceData() {
+        return streamsRebalanceData;
     }
 }
