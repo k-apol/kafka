@@ -303,19 +303,30 @@ public class KafkaStreams implements AutoCloseable {
     protected volatile State state = State.CREATED;
 
     /**
-     * Initializes broker-side state.
+     * <p>
+     * Kafka Streams creates internal topics on the broker to make the application fault-tolerant and to repartition data
+     * as needed when a key-based operation (e.g. join) follows a key-changing operation (e.g. map) in the configured topology.
+     *</p>
+     * This method initializes this required state, validates the internal topics are configured correctly,
+     * and specifies which internal topics to set up if some, but not all, are present.
      *
      * @throws MissingSourceTopicException         if a source topic is missing
      * @throws MissingInternalTopicsException      if some but not all of the internal topics are missing
      * @throws MisconfiguredInternalTopicException if an internal topics is misconfigured
      * @throws InternalTopicsAlreadySetupException if all internal topics are already setup
+     * @throws TimeoutException                    if initialization exceeds the default timeout of 30s
      */
     public void init() {
-        this.init(DEFAULT_INIT_TIMEOUT_MS);
+        init(DEFAULT_INIT_TIMEOUT_MS);
     }
 
     /**
-     * Initializes broker-side state.
+     * <p>
+     * Kafka Streams creates internal topics on the broker to make the application fault-tolerant and to repartition data
+     * as needed when a key-based operation (e.g. join) follows a key-changing operation (e.g. map) in the configured topology.
+     *</p>
+     * This method initializes this required state, validates the internal topics are configured correctly,
+     * and specifies which internal topics to set up if some, but not all, are present.
      *
      * @throws MissingSourceTopicException         if a source topic is missing
      * @throws MissingInternalTopicsException      if some but not all of the internal topics are missing
@@ -332,16 +343,19 @@ public class KafkaStreams implements AutoCloseable {
     }
 
     /**
-     * Initializes broker-side state.
-     *
-     * This methods takes parameters that specify which internal topics to setup if some
-     * but not all of them are absent.
+     * <p>
+     * Kafka Streams creates internal topics on the broker to make the application fault-tolerant and to repartition data
+     * as needed when a key-based operation (e.g. join) follows a key-changing operation (e.g. map) in the configured topology.
+     *</p>
+     * This method initializes this required state, validates the internal topics are configured correctly,
+     * and specifies which internal topics to set up if some, but not all, are present.
      *
      * @throws MissingSourceTopicException         if a source topic is missing
      * @throws MissingInternalTopicsException      if some but not all of the internal topics are missing
      *                                            and the given initialization parameters do not specify to setup them
      * @throws MisconfiguredInternalTopicException if an internal topics is misconfigured
      * @throws InternalTopicsAlreadySetupException if all internal topics are already setup
+     * @throws TimeoutException                    if initialization exceeds the default timeout of 30s
      */
 
     public void init(final InitParameters initParameters) {
@@ -349,10 +363,12 @@ public class KafkaStreams implements AutoCloseable {
     }
 
     /**
-     * Initializes broker-side state.
-     *
-     * This methods takes parameters that specify which internal topics to setup if some
-     * but not all of them are absent.
+     * <p>
+     * Kafka Streams creates internal topics on the broker to make the application fault-tolerant and to repartition data
+     * as needed when a key-based operation (e.g. join) follows a key-changing operation (e.g. map) in the configured topology.
+     *</p>
+     * This method initializes this required state, validates the internal topics are configured correctly,
+     * and specifies which internal topics to set up if some, but not all, are present.
      *
      * @throws MissingSourceTopicException         if a source topic is missing
      * @throws MissingInternalTopicsException      if some but not all of the internal topics are missing
@@ -383,40 +399,35 @@ public class KafkaStreams implements AutoCloseable {
                 allSourceTopics.addAll(topicsInfo.sourceTopics);
             }
         }
-        try {
-            final ValidationResult validationResult = internalTopicManager.validate(allInternalTopics); // can throw timeout
 
-            final boolean noInternalTopicsExist = allInternalTopics.keySet() == validationResult.missingTopics();
-            final boolean internalTopicsMisconfigured = !validationResult.misconfigurationsForTopics().isEmpty();
-            final boolean allInternalTopicsExist = validationResult.missingTopics().isEmpty();
-            final boolean missingSourceTopics = !Collections.disjoint(validationResult.missingTopics(), allSourceTopics);
+        final ValidationResult validationResult = internalTopicManager.validate(allInternalTopics);
 
-            if (internalTopicsMisconfigured) {
-                throw new MisconfiguredInternalTopicException("Misconfigured Internal Topics: " + validationResult.misconfigurationsForTopics());
-            }
-            if (missingSourceTopics) {
-                allSourceTopics.retainAll(validationResult.missingTopics());
-                throw new MissingSourceTopicException("Missing source topics: " + allSourceTopics);
-            }
-            if (noInternalTopicsExist) {
-                internalTopicManager.setup(allInternalTopics);
-            } else if (allInternalTopicsExist) {
-                throw new InternalTopicsAlreadySetupException("All internal topics have already been setup");
-            } else {
-                if (initParameters.setupInternalTopicsIfIncompleteEnabled()) {
-                    final Map<String, InternalTopicConfig> topicsToCreate = new HashMap<>();
-                    for (final String missingTopic : validationResult.missingTopics()) {
-                        topicsToCreate.put(missingTopic, allInternalTopics.get(missingTopic));
-                    }
-                    internalTopicManager.makeReady(topicsToCreate);
-                } else {
-                    throw new MissingInternalTopicsException("Missing Internal Topics: ", new ArrayList<>(validationResult.missingTopics()));
+        final boolean noInternalTopicsExist = allInternalTopics.keySet().equals(validationResult.missingTopics());
+        final boolean internalTopicsMisconfigured = !validationResult.misconfigurationsForTopics().isEmpty();
+        final boolean allInternalTopicsExist = validationResult.missingTopics().isEmpty();
+        final boolean missingSourceTopics = !Collections.disjoint(validationResult.missingTopics(), allSourceTopics);
+
+        if (internalTopicsMisconfigured) {
+            throw new MisconfiguredInternalTopicException("Misconfigured Internal Topics: " + validationResult.misconfigurationsForTopics());
+        }
+        if (missingSourceTopics) {
+            allSourceTopics.retainAll(validationResult.missingTopics());
+            throw new MissingSourceTopicException("Missing source topics: " + allSourceTopics);
+        }
+        if (noInternalTopicsExist) {
+            internalTopicManager.setup(allInternalTopics);
+        } else if (allInternalTopicsExist) {
+            throw new InternalTopicsAlreadySetupException("All internal topics have already been setup");
+        } else {
+            if (initParameters.setupInternalTopicsIfIncompleteEnabled()) {
+                final Map<String, InternalTopicConfig> topicsToCreate = new HashMap<>();
+                for (final String missingTopic : validationResult.missingTopics()) {
+                    topicsToCreate.put(missingTopic, allInternalTopics.get(missingTopic));
                 }
+                internalTopicManager.makeReady(topicsToCreate);
+            } else {
+                throw new MissingInternalTopicsException("Missing Internal Topics: ", new ArrayList<>(validationResult.missingTopics()));
             }
-        } catch (final TimeoutException timeoutException) {
-            throw new TimeoutException(timeoutException.getMessage(), timeoutException);
-        } catch (final StreamsException streamsException) {
-            throw new StreamsException(streamsException.getMessage(), streamsException);
         }
     }
 
