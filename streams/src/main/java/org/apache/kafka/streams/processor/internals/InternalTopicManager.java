@@ -42,6 +42,7 @@ import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.errors.MissingInternalTopicsException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.internals.ClientUtils.QuietConsumerConfig;
 
@@ -75,6 +76,7 @@ public class InternalTopicManager {
 
     private final Time time;
     private final Admin adminClient;
+    private final boolean isManualInternalTopicConfig;
 
     private final short replicationFactor;
     private final long windowChangeLogAdditionalRetention;
@@ -90,6 +92,8 @@ public class InternalTopicManager {
                                 final StreamsConfig streamsConfig) {
         this.time = time;
         this.adminClient = adminClient;
+        this.isManualInternalTopicConfig = streamsConfig.getString(StreamsConfig.INTERNAL_TOPIC_SETUP_CONFIG)
+                                                        .equals(StreamsConfig.INTERNAL_TOPIC_SETUP_MANUAL);
 
         final LogContext logContext = new LogContext(String.format("stream-thread [%s] ", Thread.currentThread().getName()));
         log = logContext.logger(getClass());
@@ -475,6 +479,12 @@ public class InternalTopicManager {
         while (!topicsNotReady.isEmpty()) {
             final Set<String> tempUnknownTopics = new HashSet<>();
             topicsNotReady = validateTopics(topicsNotReady, topics, tempUnknownTopics);
+
+            if (this.isManualInternalTopicConfig && !this.isInitializing) {
+                throw new MissingInternalTopicsException("Internal topic configuration set to MANUAL. \n" +
+                        "You must call init() to setup internal topics.", new ArrayList<>(topicsNotReady));
+            }
+
             newlyCreatedTopics.addAll(topicsNotReady);
 
             if (!topicsNotReady.isEmpty()) {
@@ -569,7 +579,7 @@ public class InternalTopicManager {
             }
         }
         log.debug("Completed validating internal topics and created {}", newlyCreatedTopics);
-
+        this.isInitializing = false;
         return newlyCreatedTopics;
     }
 
@@ -627,9 +637,6 @@ public class InternalTopicManager {
     public void setInitTimeout(final Duration timeoutMs) {
         this.isInitializing = true;
         this.initTimeout = timeoutMs;
-    }
-    private boolean isInitializing() {
-        return this.isInitializing;
     }
 
     /**
@@ -888,7 +895,7 @@ public class InternalTopicManager {
                                                            final Set<String> topicsNotReady,
                                                            final long retryBackoffMs,
                                                            final long currentWallClockMs) {
-        final boolean isInitializationTimeout = this.isInitializing() && currentWallClockMs >= initDeadlineMs;
+        final boolean isInitializationTimeout = this.isInitializing && currentWallClockMs >= initDeadlineMs;
 
         if (isInitializationTimeout || currentWallClockMs >= deadlineMs) {
             final String timeoutError;
