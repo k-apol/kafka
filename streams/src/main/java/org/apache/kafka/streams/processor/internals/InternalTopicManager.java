@@ -92,8 +92,8 @@ public class InternalTopicManager {
                                 final StreamsConfig streamsConfig) {
         this.time = time;
         this.adminClient = adminClient;
-        this.isManualInternalTopicConfig = streamsConfig.getString(StreamsConfig.INTERNAL_TOPIC_SETUP_CONFIG)
-                                                        .equals(StreamsConfig.INTERNAL_TOPIC_SETUP_MANUAL);
+        this.isManualInternalTopicConfig = streamsConfig.getString(StreamsConfig.INTERNAL_TOPIC_SETUP_MANUAL)
+                                                        .equals(StreamsConfig.INTERNAL_TOPIC_SETUP_CONFIG);
 
         final LogContext logContext = new LogContext(String.format("stream-thread [%s] ", Thread.currentThread().getName()));
         log = logContext.logger(getClass());
