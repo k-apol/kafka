@@ -480,10 +480,7 @@ public class InternalTopicManager {
             final Set<String> tempUnknownTopics = new HashSet<>();
             topicsNotReady = validateTopics(topicsNotReady, topics, tempUnknownTopics);
 
-            if (this.isManualInternalTopicConfig && !this.isInitializing) {
-                throw new MissingInternalTopicsException("Internal topic configuration set to MANUAL. \n" +
-                        "You must call init() to setup internal topics.", new ArrayList<>(topicsNotReady));
-            }
+            throwIfManualSetupEnabledAndCalledWithoutInit(topicsNotReady);
 
             newlyCreatedTopics.addAll(topicsNotReady);
 
@@ -581,6 +578,13 @@ public class InternalTopicManager {
         log.debug("Completed validating internal topics and created {}", newlyCreatedTopics);
         this.isInitializing = false;
         return newlyCreatedTopics;
+    }
+
+    private void throwIfManualSetupEnabledAndCalledWithoutInit(final Set<String> topicsNotReady) {
+        if (this.isManualInternalTopicConfig && !this.isInitializing) {
+            throw new MissingInternalTopicsException("Internal topic configuration set to MANUAL. \n" +
+                    "You must call init() to setup internal topics.", new ArrayList<>(topicsNotReady));
+        }
     }
 
     /**
