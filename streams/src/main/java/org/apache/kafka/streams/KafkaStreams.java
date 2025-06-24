@@ -387,12 +387,14 @@ public class KafkaStreams implements AutoCloseable {
 
     private void doInit(final InitParameters initParameters) {
         final InternalTopicManager internalTopicManager = new InternalTopicManager(time, adminClient, applicationConfigs);
+        
         if (initParameters.hasTimeoutEnabled()) {
             internalTopicManager.setInitTimeout(initParameters.getTimeout());
         }
 
         final Map<String, InternalTopicConfig> allInternalTopics = new HashMap<>();
         final Set<String> allSourceTopics = new HashSet<>();
+        
         for (final Map<TopologyMetadata.Subtopology, InternalTopologyBuilder.TopicsInfo> subtopologyMap : topologyMetadata.topologyToSubtopologyTopicsInfoMap().values()) {
             for (final InternalTopologyBuilder.TopicsInfo topicsInfo : subtopologyMap.values()) {
                 allInternalTopics.putAll(topicsInfo.stateChangelogTopics);
@@ -411,10 +413,12 @@ public class KafkaStreams implements AutoCloseable {
         if (internalTopicsMisconfigured) {
             throw new MisconfiguredInternalTopicException("Misconfigured Internal Topics: " + validationResult.misconfigurationsForTopics());
         }
+
         if (missingSourceTopics) {
             allSourceTopics.retainAll(validationResult.missingTopics());
             throw new MissingSourceTopicException("Missing source topics: " + allSourceTopics);
         }
+
         if (noInternalTopicsExist) {
             internalTopicManager.setup(allInternalTopics);
         } else if (allInternalTopicsExist) {
