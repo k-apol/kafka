@@ -413,7 +413,7 @@ public class KafkaStreamsTest {
         prepareStreamThread(streamThreadTwo, 2);
 
         try (final MockedConstruction<StateDirectory> constructed = mockConstruction(StateDirectory.class,
-                (mock, context) -> when(mock.initializeProcessId()).thenReturn(UUID.randomUUID()))) {
+            (mock, context) -> when(mock.initializeProcessId()).thenReturn(UUID.randomUUID()))) {
             try (final KafkaStreams streams = new KafkaStreams(getBuilderWithSource().build(), props, supplier, time)) {
                 assertEquals(1, constructed.constructed().size());
                 final StateDirectory stateDirectory = constructed.constructed().get(0);
@@ -1854,14 +1854,14 @@ public class KafkaStreamsTest {
         final InitParameters initParams = InitParameters.initParameters(); // no auto-setup
 
         try (final MockedConstruction<InternalTopicManager> mocked = mockConstruction(InternalTopicManager.class,
-                (mock, context) -> {
-                    final InternalTopicManager.ValidationResult result = mock(InternalTopicManager.ValidationResult.class);
+            (mock, context) -> {
+                final InternalTopicManager.ValidationResult result = mock(InternalTopicManager.ValidationResult.class);
 
-                    when(result.misconfigurationsForTopics()).thenReturn(Map.of("topicA", List.of("bad config")));
-                    when(result.missingTopics()).thenReturn(Set.of("topicA")); // triggers validation error
+                when(result.misconfigurationsForTopics()).thenReturn(Map.of("topicA", List.of("bad config")));
+                when(result.missingTopics()).thenReturn(Set.of("topicA")); // triggers validation error
 
-                    when(mock.validate(any())).thenReturn(result);
-                })) {
+                when(mock.validate(any())).thenReturn(result);
+            })) {
 
             final KafkaStreams streams = new KafkaStreams(getBuilderWithSource().build(), props, supplier, time);
 
@@ -1880,14 +1880,14 @@ public class KafkaStreamsTest {
         final InitParameters initParams = InitParameters.initParameters(); // auto-setup is disabled
 
         try (final MockedConstruction<InternalTopicManager> mocked = mockConstruction(InternalTopicManager.class,
-                (mock, context) -> {
-                    final InternalTopicManager.ValidationResult result = mock(InternalTopicManager.ValidationResult.class);
+            (mock, context) -> {
+                final InternalTopicManager.ValidationResult result = mock(InternalTopicManager.ValidationResult.class);
 
-                    when(result.misconfigurationsForTopics()).thenReturn(Collections.emptyMap());
-                    when(result.missingTopics()).thenReturn(Set.of("source-topic")); // triggers missing topic error
+                when(result.misconfigurationsForTopics()).thenReturn(Collections.emptyMap());
+                when(result.missingTopics()).thenReturn(Set.of("source-topic")); // triggers missing topic error
 
-                    when(mock.validate(any())).thenReturn(result);
-                })) {
+                when(mock.validate(any())).thenReturn(result);
+            })) {
 
             final KafkaStreams streams = new KafkaStreams(getBuilderWithSource().build(), props, supplier, time);
 
@@ -1906,13 +1906,13 @@ public class KafkaStreamsTest {
         final InitParameters initParams = InitParameters.initParameters(); // auto-setup not enabled
 
         try (final MockedConstruction<InternalTopicManager> mocked = mockConstruction(InternalTopicManager.class,
-                (mock, context) -> {
-                    final InternalTopicManager.ValidationResult result = mock(InternalTopicManager.ValidationResult.class);
-                    when(result.missingTopics()).thenReturn(Collections.emptySet());
-                    when(result.misconfigurationsForTopics()).thenReturn(Collections.emptyMap());
+            (mock, context) -> {
+                final InternalTopicManager.ValidationResult result = mock(InternalTopicManager.ValidationResult.class);
+                when(result.missingTopics()).thenReturn(Collections.emptySet());
+                when(result.misconfigurationsForTopics()).thenReturn(Collections.emptyMap());
 
-                    when(mock.validate(any())).thenReturn(result);
-                })) {
+                when(mock.validate(any())).thenReturn(result);
+            })) {
 
             final KafkaStreams streams = new KafkaStreams(getBuilderWithSource().build(), props, supplier, time);
 
@@ -1935,12 +1935,12 @@ public class KafkaStreamsTest {
         final InitParameters initParams = InitParameters.initParameters(); // auto-setup not enabled
 
         try (MockedConstruction<InternalTopicManager> mocked = mockConstruction(InternalTopicManager.class,
-                (mock, context) -> {
-                    final InternalTopicManager.ValidationResult result = mock(InternalTopicManager.ValidationResult.class);
-                    when(result.missingTopics()).thenReturn(Set.of("some-missing-topic"));
-                    when(result.misconfigurationsForTopics()).thenReturn(Collections.emptyMap());
-                    when(mock.validate(any())).thenReturn(result);
-                })) {
+            (mock, context) -> {
+                final InternalTopicManager.ValidationResult result = mock(InternalTopicManager.ValidationResult.class);
+                when(result.missingTopics()).thenReturn(Set.of("some-missing-topic"));
+                when(result.misconfigurationsForTopics()).thenReturn(Collections.emptyMap());
+                when(mock.validate(any())).thenReturn(result);
+            })) {
 
             final KafkaStreams streams = new KafkaStreams(topology, props, supplier, time);
 
@@ -1967,14 +1967,14 @@ public class KafkaStreamsTest {
         final InitParameters initParams = InitParameters.initParameters().enableSetupInternalTopicsIfIncomplete();
 
         try (MockedConstruction<InternalTopicManager> mocked = mockConstruction(InternalTopicManager.class,
-                (mock, context) -> {
-                    final InternalTopicManager.ValidationResult result = mock(InternalTopicManager.ValidationResult.class);
+            (mock, context) -> {
+                final InternalTopicManager.ValidationResult result = mock(InternalTopicManager.ValidationResult.class);
 
-                    // Simulate only some topics are missing — triggers makeReady
-                    when(result.missingTopics()).thenReturn(Set.of("topicA"));
-                    when(result.misconfigurationsForTopics()).thenReturn(Collections.emptyMap());
-                    when(mock.validate(any())).thenReturn(result);
-                })) {
+                // Simulate only some topics are missing — triggers makeReady
+                when(result.missingTopics()).thenReturn(Set.of("topicA"));
+                when(result.misconfigurationsForTopics()).thenReturn(Collections.emptyMap());
+                when(mock.validate(any())).thenReturn(result);
+            })) {
 
             final KafkaStreams streams = new KafkaStreams(topology, props, supplier, time);
 
