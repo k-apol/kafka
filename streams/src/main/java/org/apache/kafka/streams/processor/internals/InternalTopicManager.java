@@ -106,7 +106,7 @@ public class InternalTopicManager {
         consumerConfig.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
         consumerConfig.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
         retryTimeoutMs = new QuietConsumerConfig(consumerConfig).getInt(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG) / 2L;
-        this.initTimeout = StreamsConfig.DEFAULT_INIT_TIMEOUT_MS;
+        initTimeout = StreamsConfig.DEFAULT_INIT_TIMEOUT_MS;
 
         log.debug("Configs:" + Utils.NL +
             "\t{} = {}" + Utils.NL +
@@ -471,7 +471,7 @@ public class InternalTopicManager {
 
         final long currentWallClockMs = time.milliseconds();
         final long deadlineMs = currentWallClockMs + retryTimeoutMs;
-        final long initDeadlineMs = currentWallClockMs + this.initTimeout.toMillis();
+        final long initDeadlineMs = currentWallClockMs + initTimeout.toMillis();
 
         Set<String> topicsNotReady = new HashSet<>(topics.keySet());
         final Set<String> newlyCreatedTopics = new HashSet<>();
@@ -576,12 +576,12 @@ public class InternalTopicManager {
             }
         }
         log.debug("Completed validating internal topics and created {}", newlyCreatedTopics);
-        this.isInitializing = false;
+        isInitializing = false;
         return newlyCreatedTopics;
     }
 
     private void throwIfManualSetupEnabledAndCalledWithoutInit(final Set<String> topicsNotReady) {
-        if (this.isManualInternalTopicConfig && !this.isInitializing) {
+        if (isManualInternalTopicConfig && !isInitializing) {
             throw new MissingInternalTopicsException("Internal topic configuration set to MANUAL. \n" +
                     "You must call init() to setup internal topics.", new ArrayList<>(topicsNotReady));
         }
@@ -639,8 +639,8 @@ public class InternalTopicManager {
     }
 
     public void setInitTimeout(final Duration timeoutMs) {
-        this.isInitializing = true;
-        this.initTimeout = timeoutMs;
+        isInitializing = true;
+        initTimeout = timeoutMs;
     }
 
     /**
