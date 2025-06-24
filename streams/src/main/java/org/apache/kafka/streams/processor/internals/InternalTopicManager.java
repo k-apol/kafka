@@ -480,11 +480,11 @@ public class InternalTopicManager {
             final Set<String> tempUnknownTopics = new HashSet<>();
             topicsNotReady = validateTopics(topicsNotReady, topics, tempUnknownTopics);
 
-            throwIfManualSetupEnabledAndCalledWithoutInit(topicsNotReady);
-
             newlyCreatedTopics.addAll(topicsNotReady);
-
+            
             if (!topicsNotReady.isEmpty()) {
+                throwIfManualSetupEnabledAndCalledWithoutInit(topicsNotReady);
+                
                 final Set<NewTopic> newTopics = new HashSet<>();
 
                 for (final String topicName : topicsNotReady) {
