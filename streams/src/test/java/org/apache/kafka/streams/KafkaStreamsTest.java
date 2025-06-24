@@ -1846,6 +1846,7 @@ public class KafkaStreamsTest {
         assertThat(didAssertThreadTwo.get(), equalTo(true));
         assertThat(didAssertGlobalThread.get(), equalTo(true));
     }
+    
     @Test
     public void initShouldThrowMisconfiguredExceptionWhenInternalTopicsAreMisconfigured() {
         prepareStreams();
