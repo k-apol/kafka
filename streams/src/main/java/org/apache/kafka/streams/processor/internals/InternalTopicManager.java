@@ -83,7 +83,6 @@ public class InternalTopicManager {
     private final long retryBackOffMs;
     private final long retryTimeoutMs;
     private Duration initTimeout;
-    private boolean isInitializing = false;
 
     private final Map<String, String> defaultTopicConfigs = new HashMap<>();
 
@@ -465,6 +464,10 @@ public class InternalTopicManager {
      * @return the set of topics which had to be newly created
      */
     public Set<String> makeReady(final Map<String, InternalTopicConfig> topics) {
+        return makeReady(topics, false);
+    }
+
+    public Set<String> makeReady(final Map<String, InternalTopicConfig> topics, final boolean isInitializing) {
         // we will do the validation / topic-creation in a loop, until we have confirmed all topics
         // have existed with the expected number of partitions, or some create topic returns fatal errors.
         log.debug("Starting to validate internal topics {} in partition assignor.", topics);
@@ -483,7 +486,7 @@ public class InternalTopicManager {
             newlyCreatedTopics.addAll(topicsNotReady);
             
             if (!topicsNotReady.isEmpty()) {
-                throwIfManualSetupEnabledAndCalledWithoutInit(topicsNotReady);
+                throwIfManualSetupEnabledAndCalledWithoutInit(topicsNotReady, isInitializing);
                 
                 final Set<NewTopic> newTopics = new HashSet<>();
 
@@ -572,15 +575,16 @@ public class InternalTopicManager {
                     initDeadlineMs,
                     topicsNotReady,
                     retryBackOffMs,
-                    currentWallClockMs);
+                    currentWallClockMs,
+                    isInitializing);
             }
         }
         log.debug("Completed validating internal topics and created {}", newlyCreatedTopics);
-        isInitializing = false;
+
         return newlyCreatedTopics;
     }
 
-    private void throwIfManualSetupEnabledAndCalledWithoutInit(final Set<String> topicsNotReady) {
+    private void throwIfManualSetupEnabledAndCalledWithoutInit(final Set<String> topicsNotReady, final boolean isInitializing) {
         if (isManualInternalTopicConfig && !isInitializing) {
             throw new MissingInternalTopicsException("Internal topic configuration set to MANUAL. \n" +
                     "You must call init() to setup internal topics.", new ArrayList<>(topicsNotReady));
@@ -639,7 +643,6 @@ public class InternalTopicManager {
     }
 
     public void setInitTimeout(final Duration timeoutMs) {
-        isInitializing = true;
         initTimeout = timeoutMs;
     }
 
@@ -898,7 +901,8 @@ public class InternalTopicManager {
                                                            final long initDeadlineMs,
                                                            final Set<String> topicsNotReady,
                                                            final long retryBackoffMs,
-                                                           final long currentWallClockMs) {
+                                                           final long currentWallClockMs,
+                                                           final boolean isInitializing) {
         final boolean isInitializationTimeout = isInitializing && currentWallClockMs >= initDeadlineMs;
 
         if (isInitializationTimeout || currentWallClockMs >= deadlineMs) {
