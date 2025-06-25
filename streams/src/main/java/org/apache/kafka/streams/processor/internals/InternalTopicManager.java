@@ -899,7 +899,7 @@ public class InternalTopicManager {
                                                            final Set<String> topicsNotReady,
                                                            final long retryBackoffMs,
                                                            final long currentWallClockMs) {
-        final boolean isInitializationTimeout = this.isInitializing && currentWallClockMs >= initDeadlineMs;
+        final boolean isInitializationTimeout = isInitializing && currentWallClockMs >= initDeadlineMs;
 
         if (isInitializationTimeout || currentWallClockMs >= deadlineMs) {
             final String timeoutError;
