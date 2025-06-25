@@ -431,7 +431,7 @@ public class KafkaStreams implements AutoCloseable {
                 for (final String missingTopic : validationResult.missingTopics()) {
                     topicsToCreate.put(missingTopic, allInternalTopics.get(missingTopic));
                 }
-                internalTopicManager.makeReady(topicsToCreate);
+                internalTopicManager.makeReady(topicsToCreate, true);
             } else {
                 throw new MissingInternalTopicsException("Missing Internal Topics: ", new ArrayList<>(validationResult.missingTopics()));
             }
