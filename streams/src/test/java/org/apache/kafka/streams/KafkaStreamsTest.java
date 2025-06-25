@@ -1950,8 +1950,8 @@ public class KafkaStreamsTest {
             final KafkaStreams streams = new KafkaStreams(topology, props, supplier, time);
 
             assertThrows(MissingInternalTopicsException.class,
-                    () -> {streams.init(initParams);
-            });
+                    () -> { streams.init(initParams);
+                });
 
 
             final InternalTopicManager internalTopicManager = mocked.constructed().get(0);
