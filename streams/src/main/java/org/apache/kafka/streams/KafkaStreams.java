@@ -421,7 +421,9 @@ public class KafkaStreams implements AutoCloseable {
 
         if (noInternalTopicsExist) {
             internalTopicManager.setup(allInternalTopics);
-        } else if (allInternalTopicsExist) {
+        }
+
+        if (allInternalTopicsExist) {
             throw new InternalTopicsAlreadySetupException("All internal topics have already been setup");
         } else {
             if (initParameters.setupInternalTopicsIfIncompleteEnabled()) {
