@@ -40,6 +40,7 @@ import org.apache.kafka.streams.KafkaStreams.State;
 import org.apache.kafka.streams.errors.InternalTopicsAlreadySetupException;
 import org.apache.kafka.streams.errors.MisconfiguredInternalTopicException;
 import org.apache.kafka.streams.errors.MissingSourceTopicException;
+import org.apache.kafka.streams.errors.MissingInternalTopicsException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.StreamsNotStartedException;
 import org.apache.kafka.streams.errors.TopologyException;
@@ -1866,10 +1867,12 @@ public class KafkaStreamsTest {
 
             final KafkaStreams streams = new KafkaStreams(getBuilderWithSource().build(), props, supplier, time);
 
-            final StreamsException exception = assertThrows(StreamsException.class, () -> streams.init(initParams));
+            final MisconfiguredInternalTopicException exception = assertThrows(
+                    MisconfiguredInternalTopicException.class,
+                    () -> streams.init(initParams)
+            );
 
-            assertTrue(exception.getCause() instanceof MisconfiguredInternalTopicException);
-            assertTrue(exception.getCause().getMessage().contains("topicA"));
+            assertTrue(exception.getMessage().contains("topicA"));
         }
     }
 
@@ -1892,10 +1895,11 @@ public class KafkaStreamsTest {
 
             final KafkaStreams streams = new KafkaStreams(getBuilderWithSource().build(), props, supplier, time);
 
-            final StreamsException exception = assertThrows(StreamsException.class, () -> streams.init(initParams));
+            final MissingSourceTopicException exception = assertThrows(MissingSourceTopicException.class,
+                    () -> streams.init(initParams)
+            );
 
-            assertTrue(exception.getCause() instanceof MissingSourceTopicException);
-            assertTrue(exception.getCause().getMessage().contains("source-topic"));
+            assertTrue(exception.getMessage().contains("source-topic"));
         }
     }
 
@@ -1917,10 +1921,10 @@ public class KafkaStreamsTest {
 
             final KafkaStreams streams = new KafkaStreams(getBuilderWithSource().build(), props, supplier, time);
 
-            final StreamsException exception = assertThrows(StreamsException.class, () -> streams.init(initParams));
+            final StreamsException exception = assertThrows(InternalTopicsAlreadySetupException.class,
+                    () -> streams.init(initParams));
 
-            assertTrue(exception.getCause() instanceof InternalTopicsAlreadySetupException);
-            assertTrue(exception.getCause().getMessage().contains("All internal topics have already been setup"));
+            assertTrue(exception.getMessage().contains("All internal topics have already been setup"));
         }
     }
 
@@ -1945,8 +1949,8 @@ public class KafkaStreamsTest {
 
             final KafkaStreams streams = new KafkaStreams(topology, props, supplier, time);
 
-            assertThrows(StreamsException.class, () -> {
-                streams.init(initParams);
+            assertThrows(MissingInternalTopicsException.class,
+                    () -> {streams.init(initParams);
             });
 
 
