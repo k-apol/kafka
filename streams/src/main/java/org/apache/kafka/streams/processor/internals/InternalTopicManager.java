@@ -113,7 +113,7 @@ public class InternalTopicManager {
         }
     }
 
-    static class ValidationResult {
+    public static class ValidationResult {
         private final Set<String> missingTopics = new HashSet<>();
         private final Map<String, List<String>> misconfigurationsForTopics = new HashMap<>();
 
