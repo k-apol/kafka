@@ -88,6 +88,9 @@ class MetadataVersionTest {
         assertEquals(IBP_4_1_IV1, MetadataVersion.fromVersionString("4.1"));
         assertEquals(IBP_4_1_IV0, MetadataVersion.fromVersionString("4.1-IV0"));
         assertEquals(IBP_4_1_IV1, MetadataVersion.fromVersionString("4.1-IV1"));
+
+        assertEquals(IBP_4_2_IV0, MetadataVersion.fromVersionString("4.2-IV0"));
+        assertEquals(IBP_4_2_IV1, MetadataVersion.fromVersionString("4.2-IV1"));
     }
 
     @Test
@@ -112,6 +115,9 @@ class MetadataVersionTest {
         assertEquals("4.0", IBP_4_0_IV2.shortVersion());
         assertEquals("4.0", IBP_4_0_IV3.shortVersion());
         assertEquals("4.1", IBP_4_1_IV0.shortVersion());
+        assertEquals("4.1", IBP_4_1_IV1.shortVersion());
+        assertEquals("4.2", IBP_4_2_IV0.shortVersion());
+        assertEquals("4.2", IBP_4_2_IV1.shortVersion());
     }
 
     @Test
@@ -136,6 +142,9 @@ class MetadataVersionTest {
         assertEquals("4.0-IV2", IBP_4_0_IV2.version());
         assertEquals("4.0-IV3", IBP_4_0_IV3.version());
         assertEquals("4.1-IV0", IBP_4_1_IV0.version());
+        assertEquals("4.1-IV1", IBP_4_1_IV1.version());
+        assertEquals("4.2-IV0", IBP_4_2_IV0.version());
+        assertEquals("4.2-IV1", IBP_4_2_IV1.version());
     }
 
     @Test
