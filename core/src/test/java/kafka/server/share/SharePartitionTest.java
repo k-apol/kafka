@@ -55,6 +55,7 @@ import org.apache.kafka.coordinator.group.GroupConfig;
 import org.apache.kafka.coordinator.group.GroupConfigManager;
 import org.apache.kafka.coordinator.group.ShareGroupAutoOffsetResetStrategy;
 import org.apache.kafka.server.share.acknowledge.ShareAcknowledgementBatch;
+import org.apache.kafka.server.share.fetch.AcquisitionLockTimerTask;
 import org.apache.kafka.server.share.fetch.DelayedShareFetchGroupKey;
 import org.apache.kafka.server.share.fetch.ShareAcquiredRecords;
 import org.apache.kafka.server.share.metrics.SharePartitionMetrics;
@@ -5153,7 +5154,7 @@ public class SharePartitionTest {
         SharePartition sharePartition = SharePartitionBuilder.builder()
             .withGroupConfigManager(groupConfigManager).build();
 
-        SharePartition.AcquisitionLockTimerTask timerTask = sharePartition.scheduleAcquisitionLockTimeout(MEMBER_ID, 100L, 200L);
+        AcquisitionLockTimerTask timerTask = sharePartition.scheduleAcquisitionLockTimeout(MEMBER_ID, 100L, 200L);
 
         Mockito.verify(groupConfigManager, Mockito.times(2)).groupConfig(GROUP_ID);
         Mockito.verify(groupConfig).shareRecordLockDurationMs();
@@ -5175,13 +5176,13 @@ public class SharePartitionTest {
         SharePartition sharePartition = SharePartitionBuilder.builder()
             .withGroupConfigManager(groupConfigManager).build();
 
-        SharePartition.AcquisitionLockTimerTask timerTask1 = sharePartition.scheduleAcquisitionLockTimeout(MEMBER_ID, 100L, 200L);
+        AcquisitionLockTimerTask timerTask1 = sharePartition.scheduleAcquisitionLockTimeout(MEMBER_ID, 100L, 200L);
 
         Mockito.verify(groupConfigManager, Mockito.times(2)).groupConfig(GROUP_ID);
         Mockito.verify(groupConfig).shareRecordLockDurationMs();
         assertEquals(expectedDurationMs1, timerTask1.delayMs);
 
-        SharePartition.AcquisitionLockTimerTask timerTask2 = sharePartition.scheduleAcquisitionLockTimeout(MEMBER_ID, 100L, 200L);
+        AcquisitionLockTimerTask timerTask2 = sharePartition.scheduleAcquisitionLockTimeout(MEMBER_ID, 100L, 200L);
 
         Mockito.verify(groupConfigManager, Mockito.times(4)).groupConfig(GROUP_ID);
         Mockito.verify(groupConfig, Mockito.times(2)).shareRecordLockDurationMs();
