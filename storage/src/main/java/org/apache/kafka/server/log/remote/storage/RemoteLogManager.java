@@ -982,6 +982,9 @@ public class RemoteLogManager implements Closeable, AsyncOffsetReader {
                             segmentIdsBeingCopied.add(segmentId);
                             try {
                                 copyLogSegment(log, candidateLogSegment.logSegment, segmentId, candidateLogSegment.nextSegmentOffset);
+                            } catch (Exception e) {
+                                recordLagStats(log);
+                                throw e;
                             } finally {
                                 segmentIdsBeingCopied.remove(segmentId);
                             }
@@ -1088,6 +1091,10 @@ public class RemoteLogManager implements Closeable, AsyncOffsetReader {
             logger.info("Copied {} to remote storage with segment-id: {}",
                     logFileName, copySegmentFinishedRlsm.remoteLogSegmentId());
 
+            recordLagStats(log);
+        }
+
+        private void recordLagStats(UnifiedLog log) {
             long bytesLag = log.onlyLocalLogSegmentsSize() - log.activeSegment().size();
             long segmentsLag = log.onlyLocalLogSegmentsCount() - 1;
             recordLagStats(bytesLag, segmentsLag);
