@@ -194,13 +194,18 @@ public class InternalTopicManager {
                         (streamsSide, brokerSide) -> validateCleanupPolicy(validationResult, streamsSide, brokerSide)
                     );
                 }
-
-                maybeThrowTimeoutException(
-                    Arrays.asList(topicDescriptionsStillToValidate, topicConfigsStillToValidate),
-                    deadline,
-                    String.format("Could not validate internal topics within %d milliseconds. " +
-                        "This can happen if the Kafka cluster is temporarily not available.", retryTimeoutMs)
-                );
+                
+                maybeThrowTimeout(new TimeoutContext(
+                        new HashSet<String>() {{
+                            addAll(topicDescriptionsStillToValidate);
+                            addAll(topicConfigsStillToValidate);
+                        }},
+                        deadline,
+                        "Validation timeout",
+                        String.format("Could not validate internal topics within %d milliseconds. " +
+                            "This can happen if the Kafka cluster is temporarily not available.", retryTimeoutMs),
+                        null
+                    ));
 
                 if (!descriptionsForTopic.isEmpty() || !configsForTopic.isEmpty()) {
                     Utils.sleep(100);
@@ -465,29 +470,36 @@ public class InternalTopicManager {
         final long deadlineMs = currentWallClockMs + retryTimeoutMs;
 
         final Set<String> topicsNotReady = new HashSet<>(topics.keySet());
-        final Set<String> newlyCreatedTopics = new HashSet<>();
+        final Set<String> newTopics = new HashSet<>();
 
         while (!topicsNotReady.isEmpty()) {
-            final Set<NewTopic> validatedTopicObjects = createValidatedTopicObjects(topics, topicsNotReady, newlyCreatedTopics);
-            if (!validatedTopicObjects.isEmpty()) {
-                setupValidatedTopics(validatedTopicObjects, topicsNotReady);
+            final Set<NewTopic> topicsToCreate = computeTopicsToCreate(topics, topicsNotReady, newTopics);
+            if (!topicsToCreate.isEmpty()) {
+                readyTopics(topicsToCreate, topicsNotReady);
             }
             if (!topicsNotReady.isEmpty()) {
-                maybeThrowTimeoutExceptionDuringMakeReady(deadlineMs);
+                maybeThrowTimeout(new TimeoutContext(
+                    Collections.singleton("makeReadyCheck"), // dummy collection just to trigger if `topicsNotReady` is non-empty
+                    deadlineMs,
+                    "MakeReady timeout",
+                    String.format("Could not create topics within %d milliseconds. This can happen if the Kafka cluster is temporarily not available.", retryTimeoutMs),
+                    null
+                ));
+
             }
         }
-        log.debug("Completed validating internal topics and created {}", newlyCreatedTopics);
+        log.debug("Completed validating internal topics and created {}", newTopics);
 
-        return newlyCreatedTopics;
+        return newTopics;
     }
 
-    private Set<NewTopic> createValidatedTopicObjects(final Map<String, InternalTopicConfig> topics,
-                                                            Set<String> topicsNotReady,
-                                                            final Set<String> newlyCreatedTopics) {
+    private Set<NewTopic> computeTopicsToCreate(final Map<String, InternalTopicConfig> topics,
+                                                      final Set<String> topicsNotReady,
+                                                      final Set<String> newTopics) {
         final Set<String> tempUnknownTopics = new HashSet<>();
+        final Set<String> validatedTopics = validateTopics(topicsNotReady, topics, tempUnknownTopics);
 
-        topicsNotReady = validateTopics(topicsNotReady, topics, tempUnknownTopics);
-        newlyCreatedTopics.addAll(topicsNotReady);
+        newTopics.addAll(validatedTopics);
 
         final Set<NewTopic> validatedTopicObjects = new HashSet<>();
 
@@ -515,9 +527,9 @@ public class InternalTopicManager {
         return validatedTopicObjects;
     }
 
-    private void setupValidatedTopics(final Set<NewTopic> validatedTopicObjects,
-                                                   final Set<String> topicsNotReady) {
-        final CreateTopicsResult createTopicsResult = adminClient.createTopics(validatedTopicObjects);
+    private void readyTopics(final Set<NewTopic> topicsToCreate,
+                             final Set<String> topicsNotReady) {
+        final CreateTopicsResult createTopicsResult = adminClient.createTopics(topicsToCreate);
 
         for (final Map.Entry<String, KafkaFuture<Void>> createTopicResult : createTopicsResult.values().entrySet()) {
             final String topicName = createTopicResult.getKey();
@@ -567,19 +579,6 @@ public class InternalTopicManager {
                 }
             }
         }
-    }
-
-    private void maybeThrowTimeoutExceptionDuringMakeReady(final long deadlineMs) {
-        final long currentWallClockMs = time.milliseconds();
-        if (currentWallClockMs >= deadlineMs) {
-            final String timeoutError = String.format("Could not create topics within %d milliseconds. " +
-                    "This can happen if the Kafka cluster is temporarily not available.", retryTimeoutMs);
-            log.error(timeoutError);
-
-            throw new TimeoutException(timeoutError);
-        }
-
-        Utils.sleep(retryBackOffMs);
     }
 
     /**
@@ -770,12 +769,18 @@ public class InternalTopicManager {
                 }
             }
 
-            maybeThrowTimeoutExceptionDuringSetup(
+            maybeThrowTimeout(new TimeoutContext(
                 topicStillToCreate,
-                createdTopics,
-                lastErrorsSeenForTopic,
-                deadline
-            );
+                deadline,
+                "Setup timeout",
+                String.format(
+                    "Could not create internal topics within %d milliseconds. This can happen if the " +
+                    "Kafka cluster is temporarily not available or a topic is marked for deletion and the broker " +
+                    "did not complete its deletion within the timeout. The last errors seen per topic are: %s",
+                    retryTimeoutMs, lastErrorsSeenForTopic
+                ),
+                () -> cleanUpCreatedTopics(createdTopics)
+            ));
 
             if (!createResultForTopic.isEmpty()) {
                 Utils.sleep(100);
@@ -830,14 +835,16 @@ public class InternalTopicManager {
                     }
                 }
 
-                maybeThrowTimeoutException(
-                    Collections.singletonList(topicsStillToCleanup),
+                maybeThrowTimeout(new TimeoutContext(
+                    topicsStillToCleanup,
                     deadline,
+                    "Cleanup timeout",
                     String.format("Could not cleanup internal topics within %d milliseconds. This can happen if the " +
-                            "Kafka cluster is temporarily not available or the broker did not complete topic creation " +
-                            "before the cleanup. The following internal topics could not be cleaned up: %s",
-                        retryTimeoutMs, topicsStillToCleanup)
-                );
+                                "Kafka cluster is temporarily not available or the broker did not complete topic creation " +
+                                "before the cleanup. The following internal topics could not be cleaned up: %s",
+                                retryTimeoutMs, topicsStillToCleanup),
+                    null
+                ));
 
                 if (!deleteResultForTopic.isEmpty()) {
                     Utils.sleep(100);
@@ -853,36 +860,39 @@ public class InternalTopicManager {
 
         log.info("Completed cleanup of internal topics {}.", topicsToCleanUp);
     }
-
-    private void maybeThrowTimeoutException(final List<Set<String>> topicStillToProcess,
-                                            final long deadline,
-                                            final String errorMessage) {
-        if (topicStillToProcess.stream().anyMatch(resultSet -> !resultSet.isEmpty())) {
-            final long now = time.milliseconds();
-            if (now >= deadline) {
-                log.error(errorMessage);
-                throw new TimeoutException(errorMessage);
+   
+    private void maybeThrowTimeout(final TimeoutContext context) {
+        if (!context.pendingItems.isEmpty() && time.milliseconds() >= context.deadline) {
+            log.error("{}: {}", context.prefix, context.errorDetails);
+            if (context.onTimeout != null) {
+                context.onTimeout.run();
             }
+            throw new TimeoutException(String.format("%s: %s", context.prefix, context.errorDetails));
         }
     }
 
-    private void maybeThrowTimeoutExceptionDuringSetup(final Set<String> topicStillToProcess,
-                                                       final Set<String> createdTopics,
-                                                       final Map<String, Throwable> lastErrorsSeenForTopic,
-                                                       final long deadline) {
-        if (topicStillToProcess.stream().anyMatch(resultSet -> !resultSet.isEmpty())) {
-            final long now = time.milliseconds();
-            if (now >= deadline) {
-                cleanUpCreatedTopics(createdTopics);
-                final String errorMessage = String.format("Could not create internal topics within %d milliseconds. This can happen if the " +
-                    "Kafka cluster is temporarily not available or a topic is marked for deletion and the broker " +
-                    "did not complete its deletion within the timeout. The last errors seen per topic are: %s",
-                    retryTimeoutMs, lastErrorsSeenForTopic);
-                log.error(errorMessage);
-                throw new TimeoutException(errorMessage);
-            }
+    private static class TimeoutContext {
+        final Collection<?> pendingItems;
+        final long deadline;
+        final String prefix;
+        final String errorDetails;
+        final Runnable onTimeout;
+
+        TimeoutContext(
+            final Collection<?> pendingItems,
+            final long deadline,
+            final String prefix,
+            final String errorDetails,
+            final Runnable onTimeout) {
+            this.pendingItems = pendingItems;
+            this.deadline = deadline;
+            this.prefix = prefix;
+            this.errorDetails = errorDetails;
+            this.onTimeout = onTimeout;
         }
     }
+
+
 
     private void maybeSleep(final List<Set<String>> resultSetsStillToValidate,
                             final long deadline,
