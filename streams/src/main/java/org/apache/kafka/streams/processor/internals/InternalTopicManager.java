@@ -501,7 +501,7 @@ public class InternalTopicManager {
 
         newTopics.addAll(validatedTopics);
 
-        final Set<NewTopic> validatedTopicObjects = new HashSet<>();
+        final Set<NewTopic> topicsToCreate = new HashSet<>();
 
         for (final String topicName : topicsNotReady) {
             if (tempUnknownTopics.contains(topicName)) {
@@ -517,14 +517,14 @@ public class InternalTopicManager {
                     internalTopicConfig.numberOfPartitions(),
                     topicConfig);
 
-            validatedTopicObjects.add(
+            topicsToCreate.add(
                     new NewTopic(
                             internalTopicConfig.name(),
                             internalTopicConfig.numberOfPartitions(),
                             Optional.of(replicationFactor))
                             .configs(topicConfig));
         }
-        return validatedTopicObjects;
+        return topicsToCreate;
     }
 
     private void readyTopics(final Set<NewTopic> topicsToCreate,
