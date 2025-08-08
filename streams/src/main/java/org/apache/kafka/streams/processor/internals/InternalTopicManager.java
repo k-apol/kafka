@@ -113,7 +113,7 @@ public class InternalTopicManager {
         }
     }
 
-    static class ValidationResult {
+    public static class ValidationResult {
         private final Set<String> missingTopics = new HashSet<>();
         private final Map<String, List<String>> misconfigurationsForTopics = new HashMap<>();
 
@@ -194,13 +194,18 @@ public class InternalTopicManager {
                         (streamsSide, brokerSide) -> validateCleanupPolicy(validationResult, streamsSide, brokerSide)
                     );
                 }
-
-                maybeThrowTimeoutException(
-                    Arrays.asList(topicDescriptionsStillToValidate, topicConfigsStillToValidate),
-                    deadline,
-                    String.format("Could not validate internal topics within %d milliseconds. " +
-                        "This can happen if the Kafka cluster is temporarily not available.", retryTimeoutMs)
-                );
+                
+                maybeThrowTimeout(new TimeoutContext(
+                        new HashSet<String>() {{
+                            addAll(topicDescriptionsStillToValidate);
+                            addAll(topicConfigsStillToValidate);
+                        }},
+                        deadline,
+                        "Validation timeout",
+                        String.format("Could not validate internal topics within %d milliseconds. " +
+                            "This can happen if the Kafka cluster is temporarily not available.", retryTimeoutMs),
+                        null
+                    ));
 
                 if (!descriptionsForTopic.isEmpty() || !configsForTopic.isEmpty()) {
                     Utils.sleep(100);
@@ -461,120 +466,119 @@ public class InternalTopicManager {
         // have existed with the expected number of partitions, or some create topic returns fatal errors.
         log.debug("Starting to validate internal topics {} in partition assignor.", topics);
 
-        long currentWallClockMs = time.milliseconds();
+        final long currentWallClockMs = time.milliseconds();
         final long deadlineMs = currentWallClockMs + retryTimeoutMs;
 
-        Set<String> topicsNotReady = new HashSet<>(topics.keySet());
-        final Set<String> newlyCreatedTopics = new HashSet<>();
+        final Set<String> topicsNotReady = new HashSet<>(topics.keySet());
+        final Set<String> newTopics = new HashSet<>();
 
         while (!topicsNotReady.isEmpty()) {
-            final Set<String> tempUnknownTopics = new HashSet<>();
-            topicsNotReady = validateTopics(topicsNotReady, topics, tempUnknownTopics);
-            newlyCreatedTopics.addAll(topicsNotReady);
-
+            final Set<NewTopic> topicsToCreate = computeTopicsToCreate(topics, topicsNotReady, newTopics);
+            if (!topicsToCreate.isEmpty()) {
+                readyTopics(topicsToCreate, topicsNotReady);
+            }
             if (!topicsNotReady.isEmpty()) {
-                final Set<NewTopic> newTopics = new HashSet<>();
+                maybeThrowTimeout(new TimeoutContext(
+                    Collections.singleton("makeReadyCheck"), // dummy collection just to trigger if `topicsNotReady` is non-empty
+                    deadlineMs,
+                    "MakeReady timeout",
+                    String.format("Could not create topics within %d milliseconds. This can happen if the Kafka cluster is temporarily not available.", retryTimeoutMs),
+                    null
+                ));
 
-                for (final String topicName : topicsNotReady) {
-                    if (tempUnknownTopics.contains(topicName)) {
-                        // for the tempUnknownTopics, don't create topic for them
-                        // we'll check again later if remaining retries > 0
-                        continue;
-                    }
-                    final InternalTopicConfig internalTopicConfig = Objects.requireNonNull(topics.get(topicName));
-                    final Map<String, String> topicConfig = internalTopicConfig.properties(defaultTopicConfigs, windowChangeLogAdditionalRetention);
+            }
+        }
+        log.debug("Completed validating internal topics and created {}", newTopics);
 
-                    log.debug("Going to create topic {} with {} partitions and config {}.",
-                        internalTopicConfig.name(),
-                        internalTopicConfig.numberOfPartitions(),
-                        topicConfig);
+        return newTopics;
+    }
 
-                    newTopics.add(
-                        new NewTopic(
+    private Set<NewTopic> computeTopicsToCreate(final Map<String, InternalTopicConfig> topics,
+                                                      final Set<String> topicsNotReady,
+                                                      final Set<String> newTopics) {
+        final Set<String> tempUnknownTopics = new HashSet<>();
+        final Set<String> validatedTopics = validateTopics(topicsNotReady, topics, tempUnknownTopics);
+
+        newTopics.addAll(validatedTopics);
+
+        final Set<NewTopic> validatedTopicObjects = new HashSet<>();
+
+        for (final String topicName : topicsNotReady) {
+            if (tempUnknownTopics.contains(topicName)) {
+                // for the tempUnknownTopics, don't create topic for them
+                // we'll check again later if remaining retries > 0
+                continue;
+            }
+            final InternalTopicConfig internalTopicConfig = Objects.requireNonNull(topics.get(topicName));
+            final Map<String, String> topicConfig = internalTopicConfig.properties(defaultTopicConfigs, windowChangeLogAdditionalRetention);
+
+            log.debug("Going to create topic {} with {} partitions and config {}.",
+                    internalTopicConfig.name(),
+                    internalTopicConfig.numberOfPartitions(),
+                    topicConfig);
+
+            validatedTopicObjects.add(
+                    new NewTopic(
                             internalTopicConfig.name(),
                             internalTopicConfig.numberOfPartitions(),
                             Optional.of(replicationFactor))
                             .configs(topicConfig));
-                }
+        }
+        return validatedTopicObjects;
+    }
 
-                // it's possible that although some topics are not ready yet because they
-                // are temporarily not available, not that they do not exist; in this case
-                // the new topics to create may be empty and hence we can skip here
-                if (!newTopics.isEmpty()) {
-                    final CreateTopicsResult createTopicsResult = adminClient.createTopics(newTopics);
+    private void readyTopics(final Set<NewTopic> topicsToCreate,
+                             final Set<String> topicsNotReady) {
+        final CreateTopicsResult createTopicsResult = adminClient.createTopics(topicsToCreate);
 
-                    for (final Map.Entry<String, KafkaFuture<Void>> createTopicResult : createTopicsResult.values().entrySet()) {
-                        final String topicName = createTopicResult.getKey();
-                        try {
-                            createTopicResult.getValue().get();
-                            topicsNotReady.remove(topicName);
-                        } catch (final InterruptedException fatalException) {
-                            // this should not happen; if it ever happens it indicate a bug
-                            Thread.currentThread().interrupt();
-                            log.error(INTERRUPTED_ERROR_MESSAGE, fatalException);
-                            throw new IllegalStateException(INTERRUPTED_ERROR_MESSAGE, fatalException);
-                        } catch (final ExecutionException executionException) {
-                            final Throwable cause = executionException.getCause();
-                            if (cause instanceof TopicExistsException) {
-                                // This topic didn't exist earlier or its leader not known before; just retain it for next round of validation.
-                                log.info(
-                                        "Could not create topic {}. Topic is probably marked for deletion (number of partitions is unknown).\n"
-                                                +
-                                                "Will retry to create this topic in {} ms (to let broker finish async delete operation first).\n"
-                                                +
-                                                "Error message was: {}", topicName, retryBackOffMs,
-                                        cause.toString());
-                            } else {
-                                log.error("Unexpected error during topic creation for {}.\n" +
-                                        "Error message was: {}", topicName, cause.toString());
+        for (final Map.Entry<String, KafkaFuture<Void>> createTopicResult : createTopicsResult.values().entrySet()) {
+            final String topicName = createTopicResult.getKey();
+            try {
+                createTopicResult.getValue().get();
+                topicsNotReady.remove(topicName);
+            } catch (final InterruptedException fatalException) {
+                // this should not happen; if it ever happens it indicate a bug
+                Thread.currentThread().interrupt();
+                log.error(INTERRUPTED_ERROR_MESSAGE, fatalException);
+                throw new IllegalStateException(INTERRUPTED_ERROR_MESSAGE, fatalException);
+            } catch (final ExecutionException executionException) {
+                final Throwable cause = executionException.getCause();
+                if (cause instanceof TopicExistsException) {
+                    // This topic didn't exist earlier or its leader not known before; just retain it for next round of validation.
+                    log.info(
+                            "Could not create topic {}. Topic is probably marked for deletion (number of partitions is unknown).\n"
+                                    +
+                                    "Will retry to create this topic in {} ms (to let broker finish async delete operation first).\n"
+                                    +
+                                    "Error message was: {}", topicName, retryBackOffMs,
+                            cause.toString());
+                } else {
+                    log.error("Unexpected error during topic creation for {}.\n" +
+                            "Error message was: {}", topicName, cause.toString());
 
-                                if (cause instanceof UnsupportedVersionException) {
-                                    final String errorMessage = cause.getMessage();
-                                    if (errorMessage != null &&
-                                            errorMessage.startsWith("Creating topics with default partitions/replication factor are only supported in CreateTopicRequest version 4+")) {
+                    if (cause instanceof UnsupportedVersionException) {
+                        final String errorMessage = cause.getMessage();
+                        if (errorMessage != null &&
+                                errorMessage.startsWith("Creating topics with default partitions/replication factor are only supported in CreateTopicRequest version 4+")) {
 
-                                        throw new StreamsException(String.format(
-                                                "Could not create topic %s, because brokers don't support configuration replication.factor=-1."
-                                                        + " You can change the replication.factor config or upgrade your brokers to version 2.4 or newer to avoid this error.",
-                                                topicName)
-                                        );
-                                    }
-                                } else if (cause instanceof TimeoutException) {
-                                    log.error("Creating topic {} timed out.\n" +
-                                            "Error message was: {}", topicName, cause.toString());
-                                } else {
-                                    throw new StreamsException(
-                                            String.format("Could not create topic %s.", topicName),
-                                            cause
-                                    );
-                                }
-                            }
+                            throw new StreamsException(String.format(
+                                    "Could not create topic %s, because brokers don't support configuration replication.factor=-1."
+                                            + " You can change the replication.factor config or upgrade your brokers to version 2.4 or newer to avoid this error.",
+                                    topicName)
+                            );
                         }
+                    } else if (cause instanceof TimeoutException) {
+                        log.error("Creating topic {} timed out.\n" +
+                                "Error message was: {}", topicName, cause.toString());
+                    } else {
+                        throw new StreamsException(
+                                String.format("Could not create topic %s.", topicName),
+                                cause
+                        );
                     }
                 }
             }
-
-            if (!topicsNotReady.isEmpty()) {
-                currentWallClockMs = time.milliseconds();
-
-                if (currentWallClockMs >= deadlineMs) {
-                    final String timeoutError = String.format("Could not create topics within %d milliseconds. " +
-                        "This can happen if the Kafka cluster is temporarily not available.", retryTimeoutMs);
-                    log.error(timeoutError);
-                    throw new TimeoutException(timeoutError);
-                }
-                log.info(
-                    "Topics {} could not be made ready. Will retry in {} milliseconds. Remaining time in milliseconds: {}",
-                    topicsNotReady,
-                    retryBackOffMs,
-                    deadlineMs - currentWallClockMs
-                );
-                Utils.sleep(retryBackOffMs);
-            }
         }
-        log.debug("Completed validating internal topics and created {}", newlyCreatedTopics);
-
-        return newlyCreatedTopics;
     }
 
     /**
@@ -765,12 +769,18 @@ public class InternalTopicManager {
                 }
             }
 
-            maybeThrowTimeoutExceptionDuringSetup(
+            maybeThrowTimeout(new TimeoutContext(
                 topicStillToCreate,
-                createdTopics,
-                lastErrorsSeenForTopic,
-                deadline
-            );
+                deadline,
+                "Setup timeout",
+                String.format(
+                    "Could not create internal topics within %d milliseconds. This can happen if the " +
+                    "Kafka cluster is temporarily not available or a topic is marked for deletion and the broker " +
+                    "did not complete its deletion within the timeout. The last errors seen per topic are: %s",
+                    retryTimeoutMs, lastErrorsSeenForTopic
+                ),
+                () -> cleanUpCreatedTopics(createdTopics)
+            ));
 
             if (!createResultForTopic.isEmpty()) {
                 Utils.sleep(100);
@@ -825,14 +835,16 @@ public class InternalTopicManager {
                     }
                 }
 
-                maybeThrowTimeoutException(
-                    Collections.singletonList(topicsStillToCleanup),
+                maybeThrowTimeout(new TimeoutContext(
+                    topicsStillToCleanup,
                     deadline,
+                    "Cleanup timeout",
                     String.format("Could not cleanup internal topics within %d milliseconds. This can happen if the " +
-                            "Kafka cluster is temporarily not available or the broker did not complete topic creation " +
-                            "before the cleanup. The following internal topics could not be cleaned up: %s",
-                        retryTimeoutMs, topicsStillToCleanup)
-                );
+                                "Kafka cluster is temporarily not available or the broker did not complete topic creation " +
+                                "before the cleanup. The following internal topics could not be cleaned up: %s",
+                                retryTimeoutMs, topicsStillToCleanup),
+                    null
+                ));
 
                 if (!deleteResultForTopic.isEmpty()) {
                     Utils.sleep(100);
@@ -848,36 +860,39 @@ public class InternalTopicManager {
 
         log.info("Completed cleanup of internal topics {}.", topicsToCleanUp);
     }
-
-    private void maybeThrowTimeoutException(final List<Set<String>> topicStillToProcess,
-                                            final long deadline,
-                                            final String errorMessage) {
-        if (topicStillToProcess.stream().anyMatch(resultSet -> !resultSet.isEmpty())) {
-            final long now = time.milliseconds();
-            if (now >= deadline) {
-                log.error(errorMessage);
-                throw new TimeoutException(errorMessage);
+   
+    private void maybeThrowTimeout(final TimeoutContext context) {
+        if (!context.pendingItems.isEmpty() && time.milliseconds() >= context.deadline) {
+            log.error("{}: {}", context.prefix, context.errorDetails);
+            if (context.onTimeout != null) {
+                context.onTimeout.run();
             }
+            throw new TimeoutException(String.format("%s: %s", context.prefix, context.errorDetails));
         }
     }
 
-    private void maybeThrowTimeoutExceptionDuringSetup(final Set<String> topicStillToProcess,
-                                                       final Set<String> createdTopics,
-                                                       final Map<String, Throwable> lastErrorsSeenForTopic,
-                                                       final long deadline) {
-        if (topicStillToProcess.stream().anyMatch(resultSet -> !resultSet.isEmpty())) {
-            final long now = time.milliseconds();
-            if (now >= deadline) {
-                cleanUpCreatedTopics(createdTopics);
-                final String errorMessage = String.format("Could not create internal topics within %d milliseconds. This can happen if the " +
-                    "Kafka cluster is temporarily not available or a topic is marked for deletion and the broker " +
-                    "did not complete its deletion within the timeout. The last errors seen per topic are: %s",
-                    retryTimeoutMs, lastErrorsSeenForTopic);
-                log.error(errorMessage);
-                throw new TimeoutException(errorMessage);
-            }
+    private static class TimeoutContext {
+        final Collection<?> pendingItems;
+        final long deadline;
+        final String prefix;
+        final String errorDetails;
+        final Runnable onTimeout;
+
+        TimeoutContext(
+            final Collection<?> pendingItems,
+            final long deadline,
+            final String prefix,
+            final String errorDetails,
+            final Runnable onTimeout) {
+            this.pendingItems = pendingItems;
+            this.deadline = deadline;
+            this.prefix = prefix;
+            this.errorDetails = errorDetails;
+            this.onTimeout = onTimeout;
         }
     }
+
+
 
     private void maybeSleep(final List<Set<String>> resultSetsStillToValidate,
                             final long deadline,
