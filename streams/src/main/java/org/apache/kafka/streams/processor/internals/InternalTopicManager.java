@@ -475,7 +475,7 @@ public class InternalTopicManager {
         while (!topicsNotReady.isEmpty()) {
             final Set<NewTopic> topicsToCreate = computeTopicsToCreate(topics, topicsNotReady, newTopics);
             if (!topicsToCreate.isEmpty()) {
-                readyTopics(topicsToCreate, topicsNotReady);
+                createTopics(topicsToCreate, topicsNotReady, deadlineMs);
             }
             if (!topicsNotReady.isEmpty()) {
                 maybeThrowTimeout(new TimeoutContext(
@@ -494,8 +494,8 @@ public class InternalTopicManager {
     }
 
     private Set<NewTopic> computeTopicsToCreate(final Map<String, InternalTopicConfig> topics,
-                                                      final Set<String> topicsNotReady,
-                                                      final Set<String> newTopics) {
+                                                final Set<String> topicsNotReady,
+                                                final Set<String> newTopics) {
         final Set<String> tempUnknownTopics = new HashSet<>();
         final Set<String> validatedTopics = validateTopics(topicsNotReady, topics, tempUnknownTopics);
 
@@ -527,8 +527,9 @@ public class InternalTopicManager {
         return topicsToCreate;
     }
 
-    private void readyTopics(final Set<NewTopic> topicsToCreate,
-                             final Set<String> topicsNotReady) {
+    private void createTopics(final Set<NewTopic> topicsToCreate,
+                             final Set<String> topicsNotReady,
+                             final long deadlineMs) {
         final CreateTopicsResult createTopicsResult = adminClient.createTopics(topicsToCreate);
 
         for (final Map.Entry<String, KafkaFuture<Void>> createTopicResult : createTopicsResult.values().entrySet()) {
@@ -578,8 +579,29 @@ public class InternalTopicManager {
                     }
                 }
             }
+
+            if (!topicsNotReady.isEmpty()) {
+                maybeThrowTimeout(new TimeoutContext(
+                        topicsNotReady,
+                        deadlineMs,
+                        "createTopics timeout",
+                        String.format(
+                                "Could not create topics within %d milliseconds. This can happen if the Kafka cluster is temporarily not available.",
+                                retryTimeoutMs),
+                        null));
+                log.info(
+                    "Topics {} could not be made ready. Will retry in {} milliseconds. Remaining time in milliseconds: {}",
+                    topicsNotReady,
+                    retryBackOffMs,
+                    deadlineMs - time.milliseconds()
+                );
+                Utils.sleep(retryBackOffMs);
+            } else {
+                return;
+            }
         }
-    }
+    } 
+        
 
     /**
      * Try to get the partition information for the given topics; return the partition info for topics that already exists.
