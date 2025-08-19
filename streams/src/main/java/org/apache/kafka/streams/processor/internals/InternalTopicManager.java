@@ -470,12 +470,14 @@ public class InternalTopicManager {
         final long deadlineMs = currentWallClockMs + retryTimeoutMs;
 
         final Set<String> topicsNotReady = new HashSet<>(topics.keySet());
-        final Set<String> newTopics = new HashSet<>();
+        final Set<String> newlyCreatedTopics = new HashSet<>();
 
         while (!topicsNotReady.isEmpty()) {
-            final Set<NewTopic> topicsToCreate = computeTopicsToCreate(topics, topicsNotReady, newTopics);
+            final Set<NewTopic> topicsToCreate = computeTopicsToCreate(topics);
             if (!topicsToCreate.isEmpty()) {
-                createTopics(topicsToCreate, topicsNotReady, deadlineMs);
+                final Set<String> createdTopics = createTopics(topicsToCreate, topicsNotReady, deadlineMs);
+                topicsNotReady.removeAll(createdTopics);
+                newlyCreatedTopics.addAll(createdTopics);
             }
             if (!topicsNotReady.isEmpty()) {
                 maybeThrowTimeout(new TimeoutContext(
@@ -488,22 +490,18 @@ public class InternalTopicManager {
 
             }
         }
-        log.debug("Completed validating internal topics and created {}", newTopics);
+        log.debug("Completed validating internal topics and created {}", newlyCreatedTopics);
 
-        return newTopics;
+        return newlyCreatedTopics;
     }
 
-    private Set<NewTopic> computeTopicsToCreate(final Map<String, InternalTopicConfig> topics,
-                                                final Set<String> topicsNotReady,
-                                                final Set<String> newTopics) {
+    private Set<NewTopic> computeTopicsToCreate(final Map<String, InternalTopicConfig> topics) {
         final Set<String> tempUnknownTopics = new HashSet<>();
-        final Set<String> validatedTopics = validateTopics(topicsNotReady, topics, tempUnknownTopics);
-
-        newTopics.addAll(validatedTopics);
+        final Set<String> topicsNotYetCreated = identifyTopicsNotCreated(topics, tempUnknownTopics);
 
         final Set<NewTopic> topicsToCreate = new HashSet<>();
-
-        for (final String topicName : topicsNotReady) {
+        
+        for (final String topicName : topicsNotYetCreated) {
             if (tempUnknownTopics.contains(topicName)) {
                 // for the tempUnknownTopics, don't create topic for them
                 // we'll check again later if remaining retries > 0
@@ -527,16 +525,19 @@ public class InternalTopicManager {
         return topicsToCreate;
     }
 
-    private void createTopics(final Set<NewTopic> topicsToCreate,
-                             final Set<String> topicsNotReady,
-                             final long deadlineMs) {
+    private Set<String> createTopics(final Set<NewTopic> topicsToCreate,
+                                     final Set<String> topicsNotReady,
+                                     final long deadlineMs) {
         final CreateTopicsResult createTopicsResult = adminClient.createTopics(topicsToCreate);
+        final Set<String> createdTopics = new HashSet<>();
 
         for (final Map.Entry<String, KafkaFuture<Void>> createTopicResult : createTopicsResult.values().entrySet()) {
             final String topicName = createTopicResult.getKey();
             try {
                 createTopicResult.getValue().get();
                 topicsNotReady.remove(topicName);
+                createdTopics.add(topicName);
+                
             } catch (final InterruptedException fatalException) {
                 // this should not happen; if it ever happens it indicate a bug
                 Thread.currentThread().interrupt();
@@ -597,9 +598,10 @@ public class InternalTopicManager {
                 );
                 Utils.sleep(retryBackOffMs);
             } else {
-                return;
+                continue;
             }
-        }
+        } 
+        return createdTopics;
     } 
         
 
@@ -672,18 +674,14 @@ public class InternalTopicManager {
     /**
      * Check the existing topics to have correct number of partitions; and return the remaining topics that needs to be created
      */
-    private Set<String> validateTopics(final Set<String> topicsToValidate,
-                                       final Map<String, InternalTopicConfig> topicsMap,
-                                       final Set<String> tempUnknownTopics) {
-        if (!topicsMap.keySet().containsAll(topicsToValidate)) {
-            throw new IllegalStateException("The topics map " + topicsMap.keySet() + " does not contain all the topics " +
-                topicsToValidate + " trying to validate.");
-        }
+    private Set<String> identifyTopicsNotCreated(final Map<String, InternalTopicConfig> topicsMap,
+                                                 final Set<String> tempUnknownTopics) {
 
-        final Map<String, Integer> existedTopicPartition = getNumPartitions(topicsToValidate, tempUnknownTopics);
+        final Set<String> topicsToIdentify = new HashSet<>(topicsMap.keySet());
+        final Map<String, Integer> existedTopicPartition = getNumPartitions(topicsToIdentify, tempUnknownTopics);
 
-        final Set<String> topicsToCreate = new HashSet<>();
-        for (final String topicName : topicsToValidate) {
+        final Set<String> topicsNotCreated = new HashSet<>();
+        for (final String topicName : topicsToIdentify) {
             final Optional<Integer> numberOfPartitions = topicsMap.get(topicName).numberOfPartitions();
             if (numberOfPartitions.isEmpty()) {
                 log.error("Found undefined number of partitions for topic {}", topicName);
@@ -699,11 +697,11 @@ public class InternalTopicManager {
                     throw new StreamsException(errorMsg);
                 }
             } else {
-                topicsToCreate.add(topicName);
+                topicsNotCreated.add(topicName);
             }
         }
 
-        return topicsToCreate;
+        return topicsNotCreated;
     }
 
     /**
