@@ -864,7 +864,7 @@ public class InternalTopicManagerTest {
             topicManager.makeReady(Collections.singletonMap(topic1, internalTopicConfig));
             fail("Should have thrown TimeoutException.");
         } catch (final TimeoutException expected) {
-            assertThat(expected.getMessage(), is("Could not create topics within 50 milliseconds. " +
+            assertThat(expected.getMessage(), is("MakeReady timeout: Could not create topics within 50 milliseconds. " +
                     "This can happen if the Kafka cluster is temporarily not available."));
         }
     }
@@ -995,7 +995,7 @@ public class InternalTopicManagerTest {
         assertNull(exception.getCause());
         assertThat(
             exception.getMessage(),
-            equalTo("Could not create topics within 50 milliseconds." +
+            equalTo("MakeReady timeout: Could not create topics within 50 milliseconds." +
                 " This can happen if the Kafka cluster is temporarily not available.")
         );
     }
