@@ -473,7 +473,14 @@ public class InternalTopicManager {
         final Set<String> newlyCreatedTopics = new HashSet<>();
 
         while (!topicsNotReady.isEmpty()) {
-            final Set<NewTopic> topicsToCreate = computeTopicsToCreate(topics);
+            final Set<String> tempUnknownTopics = new HashSet<>();
+            final Set<NewTopic> topicsToCreate = computeTopicsToCreate(topics, tempUnknownTopics);
+            final boolean noTopicsToCreate = topicsToCreate.isEmpty() && tempUnknownTopics.isEmpty(); // how can we determine that there was a temp unknown topic from here?
+
+            if (noTopicsToCreate) { // Nothing left to do - avoid looping needlessly
+                newlyCreatedTopics.addAll(topicsNotReady);
+                break;
+            }
             if (!topicsToCreate.isEmpty()) {
                 final Set<String> createdTopics = createTopics(topicsToCreate, topicsNotReady, deadlineMs);
                 topicsNotReady.removeAll(createdTopics);
@@ -495,8 +502,8 @@ public class InternalTopicManager {
         return newlyCreatedTopics;
     }
 
-    private Set<NewTopic> computeTopicsToCreate(final Map<String, InternalTopicConfig> topics) {
-        final Set<String> tempUnknownTopics = new HashSet<>();
+    private Set<NewTopic> computeTopicsToCreate(final Map<String, InternalTopicConfig> topics, final Set<String> tempUnknownTopics) {
+//        final Set<String> tempUnknownTopics = new HashSet<>();
         final Set<String> topicsNotYetCreated = identifyTopicsNotCreated(topics, tempUnknownTopics);
 
         final Set<NewTopic> topicsToCreate = new HashSet<>();
