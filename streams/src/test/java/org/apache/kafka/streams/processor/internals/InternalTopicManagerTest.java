@@ -296,7 +296,7 @@ public class InternalTopicManagerTest {
     }
 
     @Test
-    public void shouldThrowTimeoutExceptionIfTopicExistsDuringSetup() {
+    public void shouldThrowSetupTimeoutExceptionIfTopicExistsDuringSetup() {
         setupTopicInMockAdminClient(topic1, Collections.emptyMap());
         final MockTime time = new MockTime(
             (Integer) config.get(StreamsConfig.consumerPrefix(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG)) / 15
@@ -312,7 +312,7 @@ public class InternalTopicManagerTest {
 
         assertThat(
             exception.getMessage(),
-            is("Could not create internal topics within " +
+            is("Setup timeout: Could not create internal topics within " +
                     (Integer) config.get(StreamsConfig.consumerPrefix(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG)) / 2 +
                 " milliseconds. This can happen if the Kafka cluster is temporarily not available or a topic is marked" +
                     " for deletion and the broker did not complete its deletion within the timeout." +
@@ -1024,7 +1024,7 @@ public class InternalTopicManagerTest {
         assertNull(exception.getCause());
         assertThat(
             exception.getMessage(),
-            equalTo("Could not create topics within 50 milliseconds." +
+            equalTo("MakeReady timeout: Could not create topics within 50 milliseconds." +
                 " This can happen if the Kafka cluster is temporarily not available.")
         );
     }
