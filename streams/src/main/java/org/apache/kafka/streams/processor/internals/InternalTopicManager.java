@@ -503,7 +503,6 @@ public class InternalTopicManager {
     }
 
     private Set<NewTopic> computeTopicsToCreate(final Map<String, InternalTopicConfig> topics, final Set<String> tempUnknownTopics) {
-//        final Set<String> tempUnknownTopics = new HashSet<>();
         final Set<String> topicsNotYetCreated = identifyTopicsNotCreated(topics, tempUnknownTopics);
 
         final Set<NewTopic> topicsToCreate = new HashSet<>();
