@@ -474,11 +474,16 @@ public class InternalTopicManager {
 
         while (!topicsNotReady.isEmpty()) {
             final Set<String> tempUnknownTopics = new HashSet<>();
-            final Set<NewTopic> topicsToCreate = computeTopicsToCreate(topics, tempUnknownTopics);
-            final boolean noTopicsToCreate = topicsToCreate.isEmpty() && tempUnknownTopics.isEmpty(); // how can we determine that there was a temp unknown topic from here?
 
-            if (noTopicsToCreate) { // Nothing left to do - avoid looping needlessly
-                newlyCreatedTopics.addAll(topicsNotReady);
+            // Only consider the not-ready subset on each iteration
+            final Map<String, InternalTopicConfig> notReadyTopicsMap = topics.entrySet().stream()
+                    .filter(e -> topicsNotReady.contains(e.getKey()))
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            final Set<NewTopic> topicsToCreate = computeTopicsToCreate(notReadyTopicsMap, tempUnknownTopics);
+            final boolean noTopicsToCreate = topicsToCreate.isEmpty() && tempUnknownTopics.isEmpty();
+
+            if (noTopicsToCreate) {
+                // Nothing left to create - all remaining topics were already ready
                 break;
             }
             if (!topicsToCreate.isEmpty()) {
