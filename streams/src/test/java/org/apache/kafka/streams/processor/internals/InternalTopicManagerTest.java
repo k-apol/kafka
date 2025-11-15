@@ -785,15 +785,14 @@ public class InternalTopicManagerTest {
                 .thenAnswer(answer -> new MockDescribeTopicsResult(mkMap(
                         mkEntry(topic1, topicDescriptionSuccessFuture),
                         mkEntry(topic2, topicDescriptionFailFuture) // first call: missing
-                )))
-                .thenAnswer(answer -> new MockDescribeTopicsResult(mkMap(
-                        mkEntry(topic1, topicDescriptionSuccessFuture),
-                        mkEntry(topic2, topicDescriptionSuccessFuture) // second call: now exists
                 )));
+
         when(admin.createTopics(Collections.singleton(new NewTopic(topic2, Optional.of(1), Optional.of((short) 1))
             .configs(mkMap(mkEntry(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT),
                                  mkEntry(TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG, "CreateTime"))))))
             .thenAnswer(answer -> new MockCreateTopicsResult(Collections.singletonMap(topic2, topicCreationFuture)));
+        when(admin.describeTopics(Set.of(topic2)))
+                .thenAnswer(answer -> new MockDescribeTopicsResult(Collections.singletonMap(topic2, topicDescriptionSuccessFuture)));
 
         final InternalTopicConfig topicConfig = new UnwindowedUnversionedChangelogTopicConfig(topic1, Collections.emptyMap());
         topicConfig.setNumberOfPartitions(1);
