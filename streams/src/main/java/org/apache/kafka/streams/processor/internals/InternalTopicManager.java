@@ -426,9 +426,11 @@ public class InternalTopicManager {
         final Map<String, List<TopicPartitionInfo>> topicPartitionInfo = new HashMap<>();
 
         while (!topicsToDescribe.isEmpty()) {
-            final Map<String, List<TopicPartitionInfo>> existed = getTopicPartitionInfo(topicsToDescribe, null);
+            final Set<String> tempUnknownTopics = new HashSet<>();
+            final Map<String, List<TopicPartitionInfo>> existed = getTopicPartitionInfo(topicsToDescribe, tempUnknownTopics);
             topicPartitionInfo.putAll(existed);
             topicsToDescribe.removeAll(topicPartitionInfo.keySet());
+            topicsToDescribe.addAll(tempUnknownTopics); // keep retrying unknown ones
             if (!topicsToDescribe.isEmpty()) {
                 currentWallClockMs = time.milliseconds();
 
@@ -480,6 +482,11 @@ public class InternalTopicManager {
                     .filter(e -> topicsNotReady.contains(e.getKey()))
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
             final Set<NewTopic> topicsToCreate = computeTopicsToCreate(notReadyTopicsMap, tempUnknownTopics);
+
+            topicsNotReady.retainAll(tempUnknownTopics);
+            topicsNotReady.retainAll(notReadyTopicsMap.keySet());
+            topicsToCreate.forEach(topic -> topicsNotReady.add(topic.name()));
+
             final boolean noTopicsToCreate = topicsToCreate.isEmpty() && tempUnknownTopics.isEmpty();
 
             if (noTopicsToCreate) {
@@ -513,7 +520,8 @@ public class InternalTopicManager {
         final Set<NewTopic> topicsToCreate = new HashSet<>();
         
         for (final String topicName : topicsNotYetCreated) {
-            if (tempUnknownTopics.contains(topicName)) {
+            // Topic already exists or non-deterministic result
+            if (tempUnknownTopics.contains(topicName) || topics.get(topicName) == null) {
                 // for the tempUnknownTopics, don't create topic for them
                 // we'll check again later if remaining retries > 0
                 continue;
