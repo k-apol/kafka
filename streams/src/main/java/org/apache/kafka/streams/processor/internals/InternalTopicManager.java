@@ -483,9 +483,7 @@ public class InternalTopicManager {
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
             final Set<NewTopic> topicsToCreate = computeTopicsToCreate(notReadyTopicsMap, tempUnknownTopics);
 
-            topicsNotReady.retainAll(tempUnknownTopics);
             topicsNotReady.retainAll(notReadyTopicsMap.keySet());
-            topicsToCreate.forEach(topic -> topicsNotReady.add(topic.name()));
 
             final boolean noTopicsToCreate = topicsToCreate.isEmpty() && tempUnknownTopics.isEmpty();
 
@@ -714,6 +712,8 @@ public class InternalTopicManager {
                         topicName, numberOfPartitions.get(), existedTopicPartition.get(topicName));
                     log.error(errorMsg);
                     throw new StreamsException(errorMsg);
+                } else {
+                    topicsMap.remove(topicName);
                 }
             } else {
                 topicsNotCreated.add(topicName);
