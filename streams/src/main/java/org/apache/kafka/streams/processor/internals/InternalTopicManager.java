@@ -430,7 +430,6 @@ public class InternalTopicManager {
             final Map<String, List<TopicPartitionInfo>> existed = getTopicPartitionInfo(topicsToDescribe, tempUnknownTopics);
             topicPartitionInfo.putAll(existed);
             topicsToDescribe.removeAll(topicPartitionInfo.keySet());
-            topicsToDescribe.addAll(tempUnknownTopics); // keep retrying unknown ones
             if (!topicsToDescribe.isEmpty()) {
                 currentWallClockMs = time.milliseconds();
 
